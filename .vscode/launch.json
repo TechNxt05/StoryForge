@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Next.js (apps/web)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm --filter web dev"
+    },
+    {
+      "name": "Debug FastAPI (apps/api)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["src.main:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}/apps/api"
+    }
+  ]
+}

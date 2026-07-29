@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storyforge
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storyforge-config
+  namespace: storyforge
+data:
+  ENV: "production"
+  LOG_LEVEL: "info"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storyforge-api
+  namespace: storyforge
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: storyforge-api
+  template:
+    metadata:
+      labels:
+        app: storyforge-api
+    spec:
+      containers:
+        - name: api
+          image: storyforge/api:v1.0
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storyforge-api-service
+  namespace: storyforge
+spec:
+  selector:
+    app: storyforge-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

@@ -1,0 +1,28 @@
+# Ruff configuration for StoryForge AI Python Services
+
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+]
+ignore = [
+    "E501", # Line length handled by Black/Ruff formatter
+]
+
+[lint.isort]
+known-first-party = ["storyforge_runtime", "apps", "providers"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

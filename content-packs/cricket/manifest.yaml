@@ -1,0 +1,8 @@
+name: cricket
+title: Cricket Story Content Pack
+version: 1.0.0
+description: Content pack for cricket match analysis, player biographies, and iconic sports moments.
+category: sports
+templates:
+  - match_recap
+  - player_spotlight

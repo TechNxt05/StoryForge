@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "storyforge-provider-cloudinary"
+version = "0.1.0"
+description = "Cloudinary Provider Adapter for StoryForge AI"
+requires-python = ">=3.12"
+dependencies = [
+    "storyforge-runtime",
+]

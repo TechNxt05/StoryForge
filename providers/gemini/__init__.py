@@ -1,0 +1,4 @@
+"""Gemini Provider Package."""
+from .adapter import GeminiAdapter
+
+__all__ = ["GeminiAdapter"]

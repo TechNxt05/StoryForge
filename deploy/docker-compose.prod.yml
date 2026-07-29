@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: storyforge-postgres
+    environment:
+      POSTGRES_DB: storyforge
+      POSTGRES_USER: storyforge_admin
+      POSTGRES_PASSWORD: storyforge_secret_password
+    ports:
+      - "5432:5432"
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: storyforge-redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  mongodb:
+    image: mongo:7.0
+    container_name: storyforge-mongo
+    ports:
+      - "27017:27017"
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:v1.8.0
+    container_name: storyforge-qdrant
+    ports:
+      - "6333:6333"
+    restart: always
+
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: storyforge-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://storyforge_admin:storyforge_secret_password@postgres:5432/storyforge
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      - postgres
+      - redis
+      - mongodb
+      - qdrant
+    restart: always
+
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: storyforge-worker
+    command: python -m celery -A apps.worker.src.tasks worker --loglevel=info
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+      - api-gateway
+    restart: always

@@ -1,0 +1,11 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml ./
+COPY apps/worker/pyproject.toml ./apps/worker/
+COPY runtime/pyproject.toml ./runtime/
+
+CMD ["python", "-m", "apps.worker.src.worker"]

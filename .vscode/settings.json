@@ -1,0 +1,17 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "python.analysis.autoImportCompletions": true,
+  "files.exclude": {
+    "**/.git": true,
+    "**/.pnpm-store": true,
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/__pycache__": true
+  }
+}
