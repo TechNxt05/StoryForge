@@ -35,6 +35,12 @@ content_pack_engine = ContentPackEngine()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup & Shutdown Lifecycle hook for StoryForge Gateway."""
+    # Auto-create database tables (SQLite fallback or PostgreSQL)
+    from apps.api.src.database.postgres import Base, engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("[StoryForge API] Database tables initialized.")
+
     metrics_collector.increment("gateway_startup_total", 1.0)
     print(f"[StoryForge API] Registered Capabilities: {list(CapabilityRegistry.list_capabilities().keys())}")
     print(f"[StoryForge API] Loaded Content Packs: {len(content_pack_engine.list_packs())}")

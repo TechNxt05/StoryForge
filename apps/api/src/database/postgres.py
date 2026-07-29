@@ -25,12 +25,16 @@ class Base(DeclarativeBase):
     pass
 
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://storyforge:storyforge_pass@localhost:5432/storyforge_db",
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
+    # Production: PostgreSQL with asyncpg
+    engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+else:
+    # Free tier fallback: SQLite via aiosqlite (zero-config, no external DB needed)
+    _sqlite_url = "sqlite+aiosqlite:///./storyforge.db"
+    engine = create_async_engine(_sqlite_url, echo=False, future=True)
+
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
