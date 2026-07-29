@@ -3,9 +3,9 @@
 import React, { useState } from "react";
 
 interface VideoPreviewPlayerProps {
-  videoUrl?: str;
+  videoUrl?: string;
   aspectRatio: string;
-  title: str;
+  title: string;
 }
 
 export default function VideoPreviewPlayer({
