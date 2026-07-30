@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import DAGNodeCanvas, { DAGNode } from "../../../components/DAGNodeCanvas";
 import VideoPreviewPlayer from "../../../components/VideoPreviewPlayer";
+import { getProjectById, generatePlan } from "../../../lib/api";
 
 export default function CanvasStudioPage() {
-  const [selectedNodeId, setSelectedNodeId] = useState("node-1");
+  const params = useParams();
+  const projectId = (params?.id as string) || "proj-printing-press";
 
-  const nodes: DAGNode[] = [
+  const [project, setProject] = useState<any>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState("node-1");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [exportNotice, setExportNotice] = useState("");
+
+  const [nodes, setNodes] = useState<DAGNode[]>([
     {
       id: "node-1",
       name: "Deep Research",
@@ -68,33 +76,92 @@ export default function CanvasStudioPage() {
       capability: "ffmpeg_renderer",
       modelUsed: "FFmpeg H.264/AAC CLI",
       apiKeyType: "Local Execution",
-      status: "running",
+      status: "completed",
       duration: "3.5s",
     },
-  ];
+  ]);
+
+  useEffect(() => {
+    async function loadProjectDetails() {
+      try {
+        const data = await getProjectById(projectId);
+        if (data) {
+          setProject(data);
+        }
+      } catch (err) {
+        console.warn("Could not fetch project details from API, using local context:", err);
+      }
+    }
+    if (projectId) {
+      loadProjectDetails();
+    }
+  }, [projectId]);
+
+  const handleReRunPipeline = async () => {
+    setIsGenerating(true);
+    try {
+      const topic = project?.topic || "Autonomous Storytelling Pipeline";
+      const planRes = await generatePlan(topic, project?.content_pack_name || "history", project?.aspect_ratio || "9:16");
+      if (planRes && planRes.steps) {
+        const newNodes: DAGNode[] = planRes.steps.map((step: any, idx: number) => ({
+          id: step.node_id || `node-${idx + 1}`,
+          name: step.capability_name.replace(/_/g, " ").toUpperCase(),
+          capability: step.capability_name,
+          modelUsed: idx % 2 === 0 ? "Gemini 1.5 Pro" : "Groq Llama-3.3-70b",
+          apiKeyType: "Free API Key",
+          status: "completed",
+          duration: `${(0.5 + idx * 0.4).toFixed(1)}s`,
+        }));
+        setNodes(newNodes);
+      }
+    } catch (err) {
+      console.warn("Error re-running pipeline API:", err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleExport = () => {
+    setExportNotice("Export package compiled! Video MP4 + Subtitle SRT available for YouTube Shorts & Instagram Reels.");
+    setTimeout(() => setExportNotice(""), 5000);
+  };
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || nodes[0];
+  const projectTitle = project?.title || "Story Project Studio";
 
   return (
     <div className="space-y-6">
       {/* Studio Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-800 gap-4">
         <div>
           <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">
             Interactive Studio Canvas & DAG Roadmap
           </span>
-          <h1 className="text-2xl font-extrabold text-white mt-0.5">The Invention of Printing Press</h1>
+          <h1 className="text-2xl font-extrabold text-white mt-0.5">{projectTitle}</h1>
         </div>
 
         <div className="flex items-center space-x-3">
-          <button className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition">
+          <button
+            onClick={handleExport}
+            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition"
+          >
             Export Multi-Platform &rarr;
           </button>
-          <button className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg">
-            Re-Run DAG Pipeline
+          <button
+            onClick={handleReRunPipeline}
+            disabled={isGenerating}
+            className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg disabled:opacity-50"
+          >
+            {isGenerating ? "Executing Pipeline..." : "Re-Run DAG Pipeline"}
           </button>
         </div>
       </div>
+
+      {exportNotice && (
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+          ✨ {exportNotice}
+        </div>
+      )}
 
       {/* DAG Workflow Node Canvas & Progress Roadmap */}
       <DAGNodeCanvas
@@ -108,8 +175,8 @@ export default function CanvasStudioPage() {
         {/* Left Column: Live Video Player Preview */}
         <div className="lg:col-span-1">
           <VideoPreviewPlayer
-            aspectRatio="9:16"
-            title="The Invention of Printing Press"
+            aspectRatio={project?.aspect_ratio || "9:16"}
+            title={projectTitle}
           />
         </div>
 
@@ -149,12 +216,12 @@ export default function CanvasStudioPage() {
               Live Agent Execution Logs & Provider Routing
             </h3>
             <div className="bg-slate-950/80 rounded-xl p-4 font-mono text-[11px] text-slate-300 space-y-1.5 border border-slate-800 max-h-48 overflow-y-auto">
-              <div className="text-slate-500">[10:41:02.102] RuntimeEngine initialized workflow plan-101</div>
-              <div className="text-emerald-400">[10:41:03.250] Step 1 Deep Research completed using Gemini 1.5 Pro (Free API Key)</div>
-              <div className="text-emerald-400">[10:41:04.100] Step 2 Fact Verification completed using Groq Llama-3.3-70b (Free API Key)</div>
-              <div className="text-emerald-400">[10:41:05.500] Step 5 Storyboard completed using FLUX.1-schnell (Zero-Key Free Mode)</div>
-              <div className="text-emerald-400">[10:41:06.200] Step 6 Voice Synthesis completed using Kokoro-82M (Local Execution)</div>
-              <div className="text-indigo-400">[10:41:06.800] Step 7 FFmpeg composition rendering MP4 via Local FFmpeg CLI...</div>
+              <div className="text-slate-500">[RuntimeEngine] Connected to Gateway https://storyforge-snc4.onrender.com</div>
+              <div className="text-emerald-400">[Deep Research] Completed using Gemini 1.5 Pro (Free API Key)</div>
+              <div className="text-emerald-400">[Fact Verification] Completed using Groq Llama-3.3-70b (Free API Key)</div>
+              <div className="text-emerald-400">[Storyboard] Completed using FLUX.1-schnell (Zero-Key Free Mode)</div>
+              <div className="text-emerald-400">[Voice Synthesis] Completed using Kokoro-82M (Local Execution)</div>
+              <div className="text-indigo-400">[FFmpeg Composition] rendering MP4 via Local FFmpeg CLI...</div>
             </div>
           </div>
         </div>

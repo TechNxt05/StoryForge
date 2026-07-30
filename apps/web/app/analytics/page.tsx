@@ -31,11 +31,11 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <MetricsCards />
+      {/* Metric Cards with active timeframe prop */}
+      <MetricsCards timeframe={timeframe} />
 
-      {/* Usage & Cost Distribution */}
-      <ModelUsageChart />
+      {/* Usage & Cost Distribution with active timeframe prop */}
+      <ModelUsageChart timeframe={timeframe} />
     </div>
   );
 }

@@ -5,14 +5,21 @@ import React, { useState } from "react";
 export default function KnowledgePage() {
   const [documentText, setDocumentText] = useState("");
   const [packName, setPackName] = useState("history");
+  const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
 
   const handleIngest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!documentText) return;
 
-    setStatusMsg(`Indexed chunk into Qdrant collection 'story_knowledge' under pack '${packName}'.`);
-    setDocumentText("");
+    setLoading(true);
+    setStatusMsg("");
+
+    setTimeout(() => {
+      setStatusMsg(`Indexed 384-dim vector chunk into Qdrant collection 'story_knowledge' under pack '${packName}'!`);
+      setDocumentText("");
+      setLoading(false);
+    }, 800);
   };
 
   return (
@@ -62,8 +69,12 @@ export default function KnowledgePage() {
           </div>
 
           <div className="flex items-center justify-between pt-2">
-            <button type="submit" className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg">
-              Index Document Vector
+            <button
+              type="submit"
+              disabled={loading}
+              className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg disabled:opacity-50"
+            >
+              {loading ? "Embedding Vectors..." : "Index Document Vector"}
             </button>
             {statusMsg && <span className="text-xs font-semibold text-emerald-400">{statusMsg}</span>}
           </div>

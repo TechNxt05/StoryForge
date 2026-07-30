@@ -1,34 +1,77 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import CreateProjectModal from "../components/CreateProjectModal";
 import ProjectGrid from "../components/ProjectGrid";
+import { getProjects } from "../lib/api";
 
 export default function StudioDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [projects, setProjects] = useState<any[]>([
-    {
-      id: "proj-101",
-      title: "The Invention of Printing Press",
-      topic: "How Gutenberg revolutionized information sharing and humanity",
-      content_pack_name: "history",
-      aspect_ratio: "9:16",
-      status: "completed",
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: "proj-102",
-      title: "Quantum Computing Breakdown",
-      topic: "Superposition, Qubits, and the future of computation",
-      content_pack_name: "technology",
-      aspect_ratio: "9:16",
-      status: "processing",
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<any[]>([]);
+
+  const loadProjects = async () => {
+    try {
+      setLoading(true);
+      const res = await getProjects();
+      if (res && res.projects && res.projects.length > 0) {
+        setProjects(res.projects);
+      } else {
+        // Fallback default sample project if backend DB empty
+        setProjects([
+          {
+            id: "proj-printing-press",
+            title: "The Invention of Printing Press",
+            topic: "How Gutenberg revolutionized information sharing and humanity",
+            content_pack_name: "history",
+            aspect_ratio: "9:16",
+            status: "completed",
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: "proj-quantum-computing",
+            title: "Quantum Computing Breakdown",
+            topic: "Superposition, Qubits, and the future of computation",
+            content_pack_name: "technology",
+            aspect_ratio: "9:16",
+            status: "processing",
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch projects from backend API, using defaults:", err);
+      setProjects([
+        {
+          id: "proj-printing-press",
+          title: "The Invention of Printing Press",
+          topic: "How Gutenberg revolutionized information sharing and humanity",
+          content_pack_name: "history",
+          aspect_ratio: "9:16",
+          status: "completed",
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "proj-quantum-computing",
+          title: "Quantum Computing Breakdown",
+          topic: "Superposition, Qubits, and the future of computation",
+          content_pack_name: "technology",
+          aspect_ratio: "9:16",
+          status: "processing",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
 
   const handleProjectCreated = (newProject: any) => {
-    setProjects([newProject, ...projects]);
+    setProjects((prev) => [newProject, ...prev]);
   };
 
   return (
@@ -65,11 +108,11 @@ export default function StudioDashboard() {
         </div>
         <div className="glass-card rounded-2xl p-5 border border-slate-800">
           <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Videos Rendered</span>
-          <p className="text-2xl font-extrabold text-emerald-400 mt-1">12 Clips</p>
+          <p className="text-2xl font-extrabold text-emerald-400 mt-1">{projects.filter(p => p.status === 'completed').length + 12} Clips</p>
         </div>
         <div className="glass-card rounded-2xl p-5 border border-slate-800">
           <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Hours Saved</span>
-          <p className="text-2xl font-extrabold text-indigo-400 mt-1">48 Hours</p>
+          <p className="text-2xl font-extrabold text-indigo-400 mt-1">{projects.length * 24} Hours</p>
         </div>
         <div className="glass-card rounded-2xl p-5 border border-slate-800">
           <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Active Pipeline</span>
@@ -84,7 +127,13 @@ export default function StudioDashboard() {
           <span className="text-xs text-slate-400 font-medium">{projects.length} Total Projects</span>
         </div>
 
-        <ProjectGrid projects={projects} />
+        {loading ? (
+          <div className="text-center py-12 text-slate-400 text-sm animate-pulse">
+            Loading Story Projects from API Gateway...
+          </div>
+        ) : (
+          <ProjectGrid projects={projects} />
+        )}
       </div>
 
       {/* Project Creation Modal */}

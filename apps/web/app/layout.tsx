@@ -1,17 +1,30 @@
-import type { Metadata } from "next";
+"use client";
+
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "StoryForge AI — Autonomous Short-Form Video Studio",
-  description: "Transform complex topics into cinema-quality short-form videos automatically using multi-agent workflows.",
-};
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedUser = localStorage.getItem("storyforge_user");
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          setUserName(parsed.full_name || parsed.email || "USER");
+        } catch {
+          setUserName("USER");
+        }
+      }
+    }
+  }, []);
+
   return (
     <html lang="en" className="dark">
       <body className="antialiased bg-[#090d16] text-slate-100 min-h-screen flex flex-col">
@@ -39,12 +52,19 @@ export default function RootLayout({
           <div className="flex items-center space-x-4">
             <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium text-slate-400 flex items-center space-x-2">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Runtime Engine Online</span>
+              <span className="hidden sm:inline">Runtime Engine Online</span>
             </div>
 
-            <Link href="/auth" className="h-8 w-8 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-bold text-indigo-300">
-              USER
-            </Link>
+            {userName ? (
+              <Link href="/settings" className="px-3 py-1.5 rounded-full bg-indigo-600/30 border border-indigo-500/40 text-xs font-bold text-indigo-300 flex items-center space-x-1.5">
+                <span>👤</span>
+                <span>{userName}</span>
+              </Link>
+            ) : (
+              <Link href="/auth" className="px-4 py-1.5 rounded-xl gradient-button text-xs font-bold text-white shadow-lg">
+                Sign In
+              </Link>
+            )}
           </div>
         </header>
 

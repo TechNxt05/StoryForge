@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createProject } from "../lib/api";
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export default function CreateProjectModal({ isOpen, onClose, onProjectCreated }
   const [contentPack, setContentPack] = useState("history");
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   if (!isOpen) return null;
 
@@ -22,38 +24,23 @@ export default function CreateProjectModal({ isOpen, onClose, onProjectCreated }
     if (!title || !topic) return;
 
     setLoading(true);
+    setErrorMsg("");
 
     try {
-      // Connect to API Gateway
-      const res = await fetch("http://localhost:8000/api/v1/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          topic,
-          content_pack_name: contentPack,
-          aspect_ratio: aspectRatio,
-        }),
+      const data = await createProject({
+        title,
+        topic,
+        content_pack_name: contentPack,
+        aspect_ratio: aspectRatio,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        onProjectCreated(data);
-      } else {
-        // Fallback local creation if gateway offline
-        const fallbackProject = {
-          id: `proj-${Math.random().toString(36).substring(2, 9)}`,
-          title,
-          topic,
-          content_pack_name: contentPack,
-          aspect_ratio: aspectRatio,
-          status: "draft",
-          created_at: new Date().toISOString(),
-        };
-        onProjectCreated(fallbackProject);
-      }
-    } catch (err) {
-      // Local fallback creation
+      onProjectCreated(data);
+      setTitle("");
+      setTopic("");
+      onClose();
+    } catch (err: any) {
+      console.warn("API creation failed, using fallback:", err);
+      // Fallback local creation if gateway offline
       const fallbackProject = {
         id: `proj-${Math.random().toString(36).substring(2, 9)}`,
         title,
@@ -64,9 +51,11 @@ export default function CreateProjectModal({ isOpen, onClose, onProjectCreated }
         created_at: new Date().toISOString(),
       };
       onProjectCreated(fallbackProject);
+      setTitle("");
+      setTopic("");
+      onClose();
     } finally {
       setLoading(false);
-      onClose();
     }
   };
 
@@ -74,6 +63,12 @@ export default function CreateProjectModal({ isOpen, onClose, onProjectCreated }
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="glass-card max-w-lg w-full rounded-2xl p-6 relative border border-slate-700/80 shadow-2xl">
         <h2 className="text-xl font-bold mb-4 text-white">Create New Story Project</h2>
+
+        {errorMsg && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
+            {errorMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -147,7 +142,7 @@ export default function CreateProjectModal({ isOpen, onClose, onProjectCreated }
             <button
               type="submit"
               disabled={loading}
-              className="gradient-button px-5 py-2 rounded-xl text-sm font-bold text-white shadow-lg"
+              className="gradient-button px-5 py-2 rounded-xl text-sm font-bold text-white shadow-lg disabled:opacity-50"
             >
               {loading ? "Initializing..." : "Create Project"}
             </button>

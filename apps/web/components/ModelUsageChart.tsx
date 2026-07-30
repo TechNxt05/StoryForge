@@ -2,18 +2,44 @@
 
 import React from "react";
 
-export default function ModelUsageChart() {
-  const providers = [
-    { name: "FLUX.1 (Image Gen)", usage: "450 Keyframes", share: "38%", cost: "$4.50", status: "Primary" },
-    { name: "Google Veo (Video Gen)", usage: "120 Clips", share: "32%", cost: "$5.20", status: "Primary" },
-    { name: "Gemini 1.5 (LLM)", usage: "1.2M Tokens", share: "18%", cost: "$1.80", status: "Primary" },
-    { name: "Kokoro / VoiceAI (TTS)", usage: "85 Audios", share: "12%", cost: "$0.95", status: "Backup Failover Ready" },
-  ];
+interface ModelUsageChartProps {
+  timeframe?: string;
+}
+
+export default function ModelUsageChart({ timeframe = "7d" }: ModelUsageChartProps) {
+  const getProviders = () => {
+    switch (timeframe) {
+      case "24h":
+        return [
+          { name: "FLUX.1 (Image Gen)", usage: "60 Keyframes", share: "40%", cost: "$0.60", status: "Primary" },
+          { name: "Google Veo (Video Gen)", usage: "15 Clips", share: "35%", cost: "$0.80", status: "Primary" },
+          { name: "Gemini 1.5 (LLM)", usage: "180K Tokens", share: "15%", cost: "$0.30", status: "Primary" },
+          { name: "Kokoro / VoiceAI (TTS)", usage: "12 Audios", share: "10%", cost: "$0.15", status: "Backup Failover Ready" },
+        ];
+      case "30d":
+        return [
+          { name: "FLUX.1 (Image Gen)", usage: "1,800 Keyframes", share: "36%", cost: "$18.00", status: "Primary" },
+          { name: "Google Veo (Video Gen)", usage: "480 Clips", share: "34%", cost: "$21.50", status: "Primary" },
+          { name: "Gemini 1.5 (LLM)", usage: "5.4M Tokens", share: "18%", cost: "$6.80", status: "Primary" },
+          { name: "Kokoro / VoiceAI (TTS)", usage: "340 Audios", share: "12%", cost: "$2.60", status: "Backup Failover Ready" },
+        ];
+      case "7d":
+      default:
+        return [
+          { name: "FLUX.1 (Image Gen)", usage: "450 Keyframes", share: "38%", cost: "$4.50", status: "Primary" },
+          { name: "Google Veo (Video Gen)", usage: "120 Clips", share: "32%", cost: "$5.20", status: "Primary" },
+          { name: "Gemini 1.5 (LLM)", usage: "1.2M Tokens", share: "18%", cost: "$1.80", status: "Primary" },
+          { name: "Kokoro / VoiceAI (TTS)", usage: "85 Audios", share: "12%", cost: "$0.95", status: "Backup Failover Ready" },
+        ];
+    }
+  };
+
+  const providers = getProviders();
 
   return (
     <div className="glass-card rounded-2xl p-6 border border-slate-800">
       <h3 className="font-bold text-sm text-slate-300 uppercase tracking-wider mb-4">
-        AI Provider Usage & Cost Breakdown
+        AI Provider Usage & Cost Breakdown ({timeframe.toUpperCase()})
       </h3>
 
       <div className="space-y-4">

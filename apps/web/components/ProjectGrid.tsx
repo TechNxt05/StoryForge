@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 
 interface Project {
   id: string;
@@ -51,13 +52,17 @@ export default function ProjectGrid({ projects }: ProjectGridProps) {
 
           <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-              <span className="text-xs font-semibold text-emerald-400 capitalize">{project.status}</span>
+              <span className={`h-2 w-2 rounded-full ${project.status === 'completed' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`}></span>
+              <span className={`text-xs font-semibold capitalize ${project.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'}`}>{project.status}</span>
             </div>
 
-            <button className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition">
-              Open Studio &rarr;
-            </button>
+            <Link
+              href={`/studio/${project.id}`}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition flex items-center space-x-1"
+            >
+              <span>Open Studio</span>
+              <span>&rarr;</span>
+            </Link>
           </div>
         </div>
       ))}
