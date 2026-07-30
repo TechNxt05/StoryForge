@@ -4,37 +4,40 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-SECRET_KEY = "storyforge_super_secret_production_key_change_me"
+# Read secret from env var (set in Render dashboard), with fallback
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "storyforge_super_secret_production_key_change_me")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_SECONDS = 86400  # 24 hours
 
 security = HTTPBearer(auto_error=False)
 
-# In-memory user store fallback
-_USERS_DB: Dict[str, Dict[str, Any]] = {
-    "admin@storyforge.ai": {
-        "id": "usr-admin-1",
-        "email": "admin@storyforge.ai",
-        "full_name": "Admin Creator",
-        "password_hash": hashlib.sha256(b"admin123storyforge").hexdigest(),
-        "role": "admin",
-    }
-}
-
 
 def hash_password(password: str) -> str:
-    """Hash password using SHA-256 HMAC."""
+    """Hash password using SHA-256 HMAC with secret key."""
     return hmac.new(SECRET_KEY.encode(), password.encode(), hashlib.sha256).hexdigest()
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
     """Verify password against hash."""
     return hmac.compare_digest(hash_password(plain_password), password_hash)
+
+
+# In-memory user store fallback — admin password hashed with the SAME function used for verification
+_USERS_DB: Dict[str, Dict[str, Any]] = {
+    "admin@storyforge.ai": {
+        "id": "usr-admin-1",
+        "email": "admin@storyforge.ai",
+        "full_name": "Admin Creator",
+        "password_hash": hash_password("admin123storyforge"),
+        "role": "admin",
+    }
+}
 
 
 def create_access_token(user_id: str, email: str, role: str = "creator") -> str:
@@ -72,6 +75,15 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 
         if time.time() > payload.get("exp", 0):
             return None  # Expired
+
+        # Verify signature
+        signature_input = f"{b64_header}.{b64_payload}".encode()
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(SECRET_KEY.encode(), signature_input, hashlib.sha256).digest()
+        ).decode().rstrip("=")
+
+        if not hmac.compare_digest(expected_sig, signature):
+            return None  # Tampered
 
         return payload
     except Exception:

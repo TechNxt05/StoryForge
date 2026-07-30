@@ -25,11 +25,31 @@ from apps.worker.src import DistributedWorkerCluster
 from pack_engine import ContentPackEngine
 from packages.observability.src.python_telemetry import metrics_collector
 
+# Provider Adapters
+from providers.gemini.adapter import GeminiAdapter
+from providers.groq.adapter import GroqAdapter
+from providers.openrouter.adapter import OpenRouterAdapter
+from providers.pollinations.adapter import PollinationsAdapter
+from providers.flux.adapter import FluxAdapter
+from providers.veo.adapter import VeoAdapter
+from providers.cloudinary.adapter import CloudinaryAdapter
+from providers.voiceai.adapter import VoiceAIAdapter
+
 # System Singletons
 fallback_engine = ProviderFallbackEngine()
 vector_rag_memory = VectorRAGMemoryStore()
 worker_cluster = DistributedWorkerCluster()
 content_pack_engine = ContentPackEngine()
+
+# Register all provider adapters into the fallback engine
+fallback_engine.register_provider("llm", "gemini", GeminiAdapter())
+fallback_engine.register_provider("llm", "groq", GroqAdapter())
+fallback_engine.register_provider("llm", "openrouter", OpenRouterAdapter())
+fallback_engine.register_provider("image", "pollinations", PollinationsAdapter())
+fallback_engine.register_provider("image", "flux", FluxAdapter())
+fallback_engine.register_provider("video", "veo", VeoAdapter())
+fallback_engine.register_provider("voice", "voiceai", VoiceAIAdapter())
+fallback_engine.register_provider("storage", "cloudinary", CloudinaryAdapter())
 
 
 @asynccontextmanager
@@ -44,6 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     metrics_collector.increment("gateway_startup_total", 1.0)
     print(f"[StoryForge API] Registered Capabilities: {list(CapabilityRegistry.list_capabilities().keys())}")
     print(f"[StoryForge API] Loaded Content Packs: {len(content_pack_engine.list_packs())}")
+    print(f"[StoryForge API] Provider Fallback Engine: {sum(len(v) for v in fallback_engine._providers.values())} adapters registered")
     yield
     print("[StoryForge API] Gateway shutdown complete.")
 
@@ -85,4 +106,5 @@ def health_check() -> dict[str, Any]:
         "registered_capabilities_count": len(CapabilityRegistry.list_capabilities()),
         "content_packs_count": len(content_pack_engine.list_packs()),
         "worker_cluster_nodes": len(worker_cluster.nodes),
+        "provider_adapters_registered": sum(len(v) for v in fallback_engine._providers.values()),
     }

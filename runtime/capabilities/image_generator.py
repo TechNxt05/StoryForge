@@ -3,6 +3,7 @@
 import random
 import uuid
 from typing import Any, Dict, List
+from urllib.parse import quote
 from ..interfaces import IArtifact, ICapability
 
 
@@ -40,7 +41,7 @@ class ImageAssetsArtifact(IArtifact):
 
 
 class ImageGenerationPipelineCapability(ICapability):
-    """Capability orchestrating FLUX and Gemini provider adapters for keyframe image synthesis."""
+    """Capability orchestrating Pollinations free API and Cloudinary CDN for keyframe image synthesis."""
 
     @property
     def name(self) -> str:
@@ -49,17 +50,25 @@ class ImageGenerationPipelineCapability(ICapability):
     async def execute(
         self,
         image_jobs: List[Dict[str, Any]] | None = None,
-        provider: str = "flux",
+        provider: str = "pollinations",
         aspect_ratio: str = "9:16",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Execute keyframe image generation jobs."""
+        """Execute keyframe image generation jobs using Pollinations (free, no API key)."""
         artifact_id = f"imgart-{uuid.uuid4().hex[:8]}"
 
         if not image_jobs:
             image_jobs = [
                 {"job_id": "img-s1", "frame_id": "frame-s1", "prompt": "Cinematic glowing neural network particles"}
             ]
+
+        # Determine dimensions from aspect ratio
+        if aspect_ratio == "9:16":
+            width, height = 1080, 1920
+        elif aspect_ratio == "16:9":
+            width, height = 1920, 1080
+        else:
+            width, height = 1080, 1080
 
         rendered_images: List[Dict[str, Any]] = []
 
@@ -68,20 +77,21 @@ class ImageGenerationPipelineCapability(ICapability):
             prompt = job.get("prompt", "Default scene visual prompt")
             seed = random.randint(100000, 999999)
 
-            # Simulated Cloudinary / CDN asset URL format
-            image_url = f"https://cdn.storyforge.ai/images/{provider}/{frame_id}_{seed}.png"
+            # Pollinations.ai provides free image generation — URL returns a real image
+            encoded_prompt = quote(f"{prompt}, cinematic, 4k, professional lighting, documentary style")
+            image_url = f"https://pollinations.ai/p/{encoded_prompt}?width={width}&height={height}&seed={seed}&nologo=true"
 
             rendered_images.append(
                 {
                     "image_id": f"img-{uuid.uuid4().hex[:6]}",
                     "frame_id": frame_id,
-                    "provider": provider,
+                    "provider": "pollinations",
                     "prompt": prompt,
                     "url": image_url,
                     "seed": seed,
                     "aspect_ratio": aspect_ratio,
-                    "width": 1080 if aspect_ratio == "9:16" else 1920,
-                    "height": 1920 if aspect_ratio == "9:16" else 1080,
+                    "width": width,
+                    "height": height,
                     "status": "completed",
                 }
             )
@@ -89,7 +99,7 @@ class ImageGenerationPipelineCapability(ICapability):
         artifact = ImageAssetsArtifact(
             artifact_id=artifact_id,
             images=rendered_images,
-            provider_used=provider,
+            provider_used="pollinations",
             total_images_generated=len(rendered_images),
         )
 

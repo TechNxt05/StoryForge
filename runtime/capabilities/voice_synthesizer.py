@@ -3,6 +3,7 @@
 import random
 import uuid
 from typing import Any, Dict, List
+from urllib.parse import quote
 from ..interfaces import IArtifact, ICapability
 from providers.voiceai import VoiceAIAdapter
 
@@ -41,7 +42,7 @@ class VoiceoverArtifact(IArtifact):
 
 
 class VoiceSynthesizerCapability(ICapability):
-    """Capability orchestrating Kokoro, Voicebox, and VoiceAI open-source TTS provider adapters with failover."""
+    """Capability orchestrating TTS voice synthesis with automatic fallback."""
 
     def __init__(self) -> None:
         self.voiceai_adapter = VoiceAIAdapter()
@@ -53,9 +54,9 @@ class VoiceSynthesizerCapability(ICapability):
     async def execute(
         self,
         audio_jobs: List[Dict[str, Any]] | None = None,
-        provider: str = "kokoro",
+        provider: str = "voiceai",
         backup_providers: List[str] | None = None,
-        voice_id: str = "narrator-male-1",
+        voice_id: str = "en-US-Neural",
         sample_rate: int = 24000,
         **kwargs: Any,
     ) -> Dict[str, Any]:
@@ -63,7 +64,7 @@ class VoiceSynthesizerCapability(ICapability):
         artifact_id = f"audart-{uuid.uuid4().hex[:8]}"
 
         if not backup_providers:
-            backup_providers = ["voiceai", "voicebox", "kokoro"]
+            backup_providers = ["voiceai", "kokoro", "voicebox"]
 
         if not audio_jobs:
             audio_jobs = [
@@ -81,15 +82,14 @@ class VoiceSynthesizerCapability(ICapability):
             total_duration += duration
             seed = random.randint(100000, 999999)
 
-            # Active provider selection with fallback support
-            active_provider = provider
-            audio_url = f"https://cdn.storyforge.ai/audio/{active_provider}/scene_{scene_num}_{seed}.mp3"
+            encoded_text = quote(text)
+            audio_url = f"https://api.voiceai.community/v1/synthesize?voice={voice_id}&text={encoded_text}&seed={seed}"
 
             rendered_audio.append(
                 {
                     "audio_id": f"aud-{uuid.uuid4().hex[:6]}",
                     "scene_number": scene_num,
-                    "provider": active_provider,
+                    "provider": provider,
                     "backup_providers_available": backup_providers,
                     "voice_id": voice_id,
                     "text": text,

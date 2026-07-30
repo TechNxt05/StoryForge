@@ -3,6 +3,7 @@
 import random
 import uuid
 from typing import Any, Dict, List
+from urllib.parse import quote
 from ..interfaces import IArtifact, ICapability
 
 
@@ -40,7 +41,7 @@ class VideoAssetsArtifact(IArtifact):
 
 
 class VideoGenerationPipelineCapability(ICapability):
-    """Capability orchestrating Google Veo provider adapter for video clip synthesis."""
+    """Capability orchestrating Pollinations/Cloudinary provider adapters for video clip synthesis."""
 
     @property
     def name(self) -> str:
@@ -49,7 +50,7 @@ class VideoGenerationPipelineCapability(ICapability):
     async def execute(
         self,
         video_jobs: List[Dict[str, Any]] | None = None,
-        provider: str = "veo",
+        provider: str = "pollinations",
         aspect_ratio: str = "9:16",
         fps: int = 60,
         **kwargs: Any,
@@ -62,6 +63,13 @@ class VideoGenerationPipelineCapability(ICapability):
                 {"job_id": "vid-s1", "frame_id": "frame-s1", "prompt": "Fluid cinematic camera movement over neural network"}
             ]
 
+        if aspect_ratio == "9:16":
+            width, height = 1080, 1920
+        elif aspect_ratio == "16:9":
+            width, height = 1920, 1080
+        else:
+            width, height = 1080, 1080
+
         rendered_clips: List[Dict[str, Any]] = []
 
         for job in video_jobs:
@@ -70,8 +78,8 @@ class VideoGenerationPipelineCapability(ICapability):
             clip_duration = job.get("duration_seconds", 5.0)
             seed = random.randint(100000, 999999)
 
-            # Simulated Cloudinary / CDN video URL format
-            video_url = f"https://cdn.storyforge.ai/videos/{provider}/{frame_id}_{seed}.mp4"
+            encoded_prompt = quote(f"{prompt}, 4k video motion, cinematic")
+            video_url = f"https://pollinations.ai/p/{encoded_prompt}?width={width}&height={height}&seed={seed}&model=video&nologo=true"
 
             rendered_clips.append(
                 {

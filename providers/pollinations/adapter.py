@@ -22,9 +22,9 @@ class PollinationsAdapter(IProvider):
         encoded_prompt = urllib.parse.quote(prompt)
 
         if media_type == "video":
-            url = f"https://pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&seed={seed}&model=video"
+            url = f"https://pollinations.ai/p/{encoded_prompt}?width={width}&height={height}&seed={seed}&nologo=true"
         else:
-            url = f"https://pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&seed={seed}&model=flux"
+            url = f"https://pollinations.ai/p/{encoded_prompt}?width={width}&height={height}&seed={seed}&nologo=true"
 
         return {
             "status": "success",
