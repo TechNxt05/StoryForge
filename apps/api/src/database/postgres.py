@@ -25,10 +25,15 @@ class Base(DeclarativeBase):
     pass
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
-if DATABASE_URL and DATABASE_URL.startswith("postgresql"):
-    # Production: PostgreSQL with asyncpg
+if DATABASE_URL:
+    # Normalize postgres:// or postgresql:// to postgresql+asyncpg:// for SQLAlchemy 2.0 async engine
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
     engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 else:
     # Free tier fallback: SQLite via aiosqlite (zero-config, no external DB needed)

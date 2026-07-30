@@ -1,7 +1,7 @@
 """Platform Settings & Workspace Management API Router for StoryForge Gateway."""
 
-import hashlib
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from ..auth import get_current_user
@@ -10,9 +10,9 @@ router = APIRouter(prefix="/api/v1/settings", tags=["Settings & Workspace"])
 
 # In-memory key store with simple key masking & hashing
 _API_KEYS_DB: Dict[str, str] = {
-    "gemini": "sk-gemini-sample-key",
-    "flux": "sk-flux-sample-key",
-    "elevenlabs": "sk-eleven-sample-key",
+    "gemini": os.getenv("GEMINI_API_KEY", "sk-gemini-sample-key"),
+    "groq": os.getenv("GROQ_API_KEY", "sk-groq-sample-key"),
+    "openrouter": os.getenv("OPENROUTER_API_KEY", "sk-openrouter-sample-key"),
 }
 
 _WORKSPACE_DB: Dict[str, Any] = {
@@ -42,6 +42,12 @@ class WorkspaceMemberAddRequest(BaseModel):
 @router.get("/keys")
 async def get_api_keys(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, str]:
     """Retrieve masked provider API keys."""
+    # Sync from env vars if updated
+    for provider in ["gemini", "groq", "openrouter", "flux", "veo", "cloudinary"]:
+        env_val = os.getenv(f"{provider.upper()}_API_KEY")
+        if env_val:
+            _API_KEYS_DB[provider] = env_val
+
     return {k: f"{v[:4]}...{v[-4:]}" if len(v) > 8 else "****" for k, v in _API_KEYS_DB.items()}
 
 
@@ -50,12 +56,16 @@ async def update_api_key(
     req: APIKeyUpdateRequest,
     user: Dict[str, Any] = Depends(get_current_user),
 ) -> Dict[str, str]:
-    """Save or update a provider API key securely."""
+    """Save or update a provider API key securely in memory and active environment."""
     if not req.api_key or len(req.api_key) < 5:
         raise HTTPException(status_code=400, detail="Invalid API key format.")
 
-    _API_KEYS_DB[req.provider.lower()] = req.api_key
-    return {"status": "success", "provider": req.provider, "message": "API key updated successfully."}
+    provider_clean = req.provider.lower()
+    _API_KEYS_DB[provider_clean] = req.api_key
+    # Dynamically inject into active Python process environment
+    os.environ[f"{provider_clean.upper()}_API_KEY"] = req.api_key
+
+    return {"status": "success", "provider": req.provider, "message": "API key updated successfully in runtime process."}
 
 
 @router.get("/workspace")

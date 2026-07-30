@@ -56,10 +56,25 @@ fallback_engine.register_provider("storage", "cloudinary", CloudinaryAdapter())
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup & Shutdown Lifecycle hook for StoryForge Gateway."""
     # Auto-create database tables (SQLite fallback or PostgreSQL)
-    from apps.api.src.database.postgres import Base, engine
+    from apps.api.src.database.postgres import Base, engine, AsyncSessionLocal, User as DBUser, Workspace as DBWorkspace
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     print("[StoryForge API] Database tables initialized.")
+
+    try:
+        async with AsyncSessionLocal() as session:
+            u = await session.get(DBUser, "user-default")
+            if not u:
+                u = DBUser(id="user-default", email="guest@storyforge.ai", full_name="Guest Creator")
+                session.add(u)
+            w = await session.get(DBWorkspace, "ws-default")
+            if not w:
+                w = DBWorkspace(id="ws-default", name="Default Workspace", slug="ws-default", owner_id="user-default")
+                session.add(w)
+            await session.commit()
+        print("[StoryForge API] Default user and workspace seeded.")
+    except Exception as e:
+        print(f"[StoryForge API] DB Seeding note: {e}")
 
     metrics_collector.increment("gateway_startup_total", 1.0)
     print(f"[StoryForge API] Registered Capabilities: {list(CapabilityRegistry.list_capabilities().keys())}")

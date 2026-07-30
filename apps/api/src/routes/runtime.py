@@ -12,11 +12,14 @@ from ..schemas import (
 
 from runtime.planner import AgentPlannerEngine
 from runtime.scheduler import TaskQueueManager
+from runtime.registry import CapabilityRegistry
+from runtime.execution import ExecutionRunner
 
 router = APIRouter(prefix="/api/v1/runtime", tags=["Runtime Engine"])
 
 planner_engine = AgentPlannerEngine()
 queue_manager = TaskQueueManager()
+runner = ExecutionRunner()
 
 
 @router.post("/plan", response_model=PlanResponse)
@@ -48,10 +51,17 @@ async def execute_capability(req: CapabilityExecuteRequest) -> Dict[str, Any]:
         task = await queue_manager.enqueue(job_name=req.capability_name, payload=req.kwargs)
         return {"status": "enqueued", "task_id": task.task_id}
     else:
+        cap = CapabilityRegistry.get_capability(req.capability_name)
+        if not cap:
+            raise HTTPException(status_code=404, detail=f"Capability '{req.capability_name}' not registered.")
+
+        step_result = await runner.execute_capability(step_id="step-api", capability=cap, kwargs=req.kwargs)
         return {
-            "status": "completed",
+            "status": "completed" if step_result.success else "failed",
             "capability_name": req.capability_name,
-            "result": f"Executed {req.capability_name} synchronously",
+            "result": step_result.output,
+            "error": step_result.error,
+            "duration_ms": step_result.duration_ms,
         }
 
 
