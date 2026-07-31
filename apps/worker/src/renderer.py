@@ -47,8 +47,16 @@ class FFmpegVideoRenderer:
         concat_inputs = "".join(f"[v{i}]" for i in range(len(video_clips)))
         filter_parts.append(f"{concat_inputs}concat=n={len(video_clips)}:v=1:a=0[vconcat];")
 
-        # Subtitle overlay filter
-        if has_subtitles:
+        # Randomly choose between burned-in title cards (drawtext) or SRT/ASS subtitles overlay for variety
+        overlay_mode = random.choice(["drawtext", "subtitles"])
+        
+        if overlay_mode == "drawtext":
+            title_text = project_title.replace("'", "")
+            filter_parts.append(
+                f"[vconcat]drawtext=text='{title_text}':fontcolor=white:fontsize=42:"
+                f"box=1:boxcolor=black@0.6:boxborderw=10:x=(w-text_w)/2:y=h-150[vfinal]"
+            )
+        elif has_subtitles:
             filter_parts.append("[vconcat]subtitles=subtitles.ass:force_style='FontSize=24,PrimaryColour=&H00FFFF&'[vfinal]")
         else:
             filter_parts.append("[vconcat]copy[vfinal]")

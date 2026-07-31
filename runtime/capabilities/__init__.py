@@ -16,6 +16,8 @@ from .revision import StoryRevisionCapability, RevisionArtifact
 from .exporter import MultiPlatformExporterCapability, ExportAssetsArtifact
 from .asset_manager import CloudinaryAssetManagerCapability, CDNAssetArtifact
 from .vision_analyzer import VisionAnalyzerCapability, VisionAnalysisArtifact
+from .web_scraper import WebScraperCapability, WebResearchArtifact
+from .youtube_fetcher import YouTubeFetcherCapability, YouTubeBRollArtifact
 from ..registry.store import CapabilityRegistry
 
 # Register capabilities in CapabilityRegistry
@@ -35,6 +37,8 @@ _revision_cap = StoryRevisionCapability()
 _exporter_cap = MultiPlatformExporterCapability()
 _cdn_asset_mgr_cap = CloudinaryAssetManagerCapability()
 _vision_analyzer_cap = VisionAnalyzerCapability()
+_web_scraper_cap = WebScraperCapability()
+_youtube_fetcher_cap = YouTubeFetcherCapability()
 
 CapabilityRegistry.register_capability(_research_cap.name, _research_cap)
 CapabilityRegistry.register_capability(_fact_cap.name, _fact_cap)
@@ -52,6 +56,8 @@ CapabilityRegistry.register_capability(_revision_cap.name, _revision_cap)
 CapabilityRegistry.register_capability(_exporter_cap.name, _exporter_cap)
 CapabilityRegistry.register_capability(_cdn_asset_mgr_cap.name, _cdn_asset_mgr_cap)
 CapabilityRegistry.register_capability(_vision_analyzer_cap.name, _vision_analyzer_cap)
+CapabilityRegistry.register_capability(_web_scraper_cap.name, _web_scraper_cap)
+CapabilityRegistry.register_capability(_youtube_fetcher_cap.name, _youtube_fetcher_cap)
 
 __all__ = [
     "DeepResearchCapability",
@@ -86,4 +92,8 @@ __all__ = [
     "CDNAssetArtifact",
     "VisionAnalyzerCapability",
     "VisionAnalysisArtifact",
+    "WebScraperCapability",
+    "WebResearchArtifact",
+    "YouTubeFetcherCapability",
+    "YouTubeBRollArtifact",
 ]

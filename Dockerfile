@@ -28,7 +28,7 @@ COPY content-packs/ ./content-packs/
 # Install python dependencies
 RUN pip install --no-cache-dir \
     fastapi uvicorn pydantic httpx \
-    sqlalchemy aiosqlite asyncpg email-validator python-multipart
+    sqlalchemy aiosqlite asyncpg email-validator python-multipart yt-dlp
 
 # Expose API Gateway port
 EXPOSE 8000

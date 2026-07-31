@@ -57,15 +57,18 @@ class ScriptwriterCapability(ICapability):
         gemini_key = os.getenv("GEMINI_API_KEY", "")
         if gemini_key:
             try:
-                base_prompt = f"Write a 4-scene short video script for a 60-second documentary reel about '{title}'."
+                base_prompt = (
+                    f"You are an expert Film Director. Create a 4-scene video blueprint for '{title}'.\n"
+                    f"First, determine the overall MOOD/TONE of the story (e.g., 'emotional', 'exciting', 'heroic').\n"
+                    f"Select a matching Kokoro voice model tone (e.g., 'af_heart' for emotional, 'am_adam' for exciting, 'af_sarah' for dramatic).\n"
+                    f"Select a matching background music style (e.g., 'symphony_dhoni', 'cinematic_orchestral', 'upbeat_electronic').\n"
+                )
                 if vision_context:
-                    base_prompt += f"\n\nCRITICAL INSTRUCTION: You MUST incorporate the following user-uploaded media into the scenes seamlessly. Write voiceover that bridges and contextualizes these clips. Here is the visual analysis of the uploaded clips:\n{vision_context}\n\nMake sure the script clearly specifies which scene uses which uploaded clip by referencing its original filename or description in the visual_prompt."
+                    base_prompt += f"\nVisual context of uploaded media:\n{vision_context}\n"
                 
                 prompt = (
-                    f"{base_prompt}\n\n"
-                    f"For each scene provide: scene_number, heading (e.g. ACT 1: HOOK), narration_text (2-3 sentences), "
-                    f"visual_prompt (cinematic image description or refer to uploaded clip), camera_direction, estimated_duration_seconds. "
-                    f"Return as JSON array of scene objects."
+                    f"{base_prompt}\n"
+                    f"Return a JSON object with keys: tone, voice_model, music_style, scenes (list of objects with: scene_number, heading, narration_text, visual_prompt, camera_direction, estimated_duration_seconds, text_overlay)."
                 )
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
                 payload = {

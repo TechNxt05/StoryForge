@@ -3,7 +3,6 @@
 import uuid
 from typing import Any, Dict, List
 from ..interfaces import IArtifact, ICapability
-from apps.api.src.main import fallback_engine
 
 class VisionAnalysisArtifact(IArtifact):
     """Artifact containing AI-generated visual descriptions of uploaded media."""
@@ -46,6 +45,7 @@ class VisionAnalyzerCapability(ICapability):
         artifact_id = f"vsn-{uuid.uuid4().hex[:8]}"
         descriptions = {}
 
+        from apps.api.src.main import fallback_engine
         llm_providers = fallback_engine._providers.get("llm", {})
         gemini_adapter = llm_providers.get("gemini")
         

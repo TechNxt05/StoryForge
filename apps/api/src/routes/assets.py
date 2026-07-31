@@ -12,9 +12,6 @@ from runtime.providers.fallback import ProviderFallbackEngine
 
 router = APIRouter(prefix="/api/v1/projects", tags=["Assets"])
 
-# We'll need a reference to the global fallback engine to use Cloudinary
-from apps.api.src.main import fallback_engine
-
 @router.post("/{project_id}/assets/upload", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 async def upload_asset(
     project_id: str,
@@ -29,6 +26,7 @@ async def upload_asset(
     if file_size == 0:
         raise HTTPException(status_code=400, detail="Empty file uploaded.")
     
+    from apps.api.src.main import fallback_engine
     cloudinary_adapter = fallback_engine._providers.get("storage", {}).get("cloudinary")
     
     upload_result = {}
