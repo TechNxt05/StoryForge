@@ -31,11 +31,16 @@ class FFmpegVideoRenderer:
 
         filter_parts: List[str] = []
 
-        # Scale & pad inputs to target resolution
+        # Scale & pad inputs to target resolution and apply brightness/contrast
         for idx, clip in enumerate(video_clips):
+            filters = clip.get("filters", {})
+            brightness = filters.get("brightness", 0)
+            contrast = filters.get("contrast", 1)
+            
             filter_parts.append(
                 f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{idx}];"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,"
+                f"eq=brightness={brightness}:contrast={contrast}[v{idx}];"
             )
 
         # Concat video streams

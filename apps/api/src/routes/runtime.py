@@ -12,7 +12,7 @@ from ..schemas import (
 
 from runtime.planner import AgentPlannerEngine
 from runtime.scheduler import TaskQueueManager
-from runtime.registry import CapabilityRegistry
+from runtime.registry.store import CapabilityRegistry
 from runtime.execution import ExecutionRunner
 
 router = APIRouter(prefix="/api/v1/runtime", tags=["Runtime Engine"])

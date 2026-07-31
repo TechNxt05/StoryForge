@@ -9,7 +9,7 @@ interface VideoPreviewPlayerProps {
 }
 
 export default function VideoPreviewPlayer({
-  videoUrl = "https://cdn.storyforge.ai/exports/render_sample.mp4",
+  videoUrl = "https://res.cloudinary.com/demo/video/upload/v1689255627/dog.mp4",
   aspectRatio = "9:16",
   title,
 }: VideoPreviewPlayerProps) {

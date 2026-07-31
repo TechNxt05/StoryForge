@@ -49,18 +49,22 @@ class ScriptwriterCapability(ICapability):
     def name(self) -> str:
         return "scriptwriter"
 
-    async def _call_llm(self, title: str) -> str | None:
-        """Call Gemini or Groq for real script generation."""
+    async def _call_llm(self, title: str, vision_context: str = "") -> str | None:
+        """Call Gemini or Groq for real script generation, utilizing vision context if provided."""
         import httpx
 
         # Try Gemini first
         gemini_key = os.getenv("GEMINI_API_KEY", "")
         if gemini_key:
             try:
+                base_prompt = f"Write a 4-scene short video script for a 60-second documentary reel about '{title}'."
+                if vision_context:
+                    base_prompt += f"\n\nCRITICAL INSTRUCTION: You MUST incorporate the following user-uploaded media into the scenes seamlessly. Write voiceover that bridges and contextualizes these clips. Here is the visual analysis of the uploaded clips:\n{vision_context}\n\nMake sure the script clearly specifies which scene uses which uploaded clip by referencing its original filename or description in the visual_prompt."
+                
                 prompt = (
-                    f"Write a 4-scene short video script for a 60-second documentary reel about '{title}'. "
+                    f"{base_prompt}\n\n"
                     f"For each scene provide: scene_number, heading (e.g. ACT 1: HOOK), narration_text (2-3 sentences), "
-                    f"visual_prompt (cinematic image description), camera_direction, estimated_duration_seconds. "
+                    f"visual_prompt (cinematic image description or refer to uploaded clip), camera_direction, estimated_duration_seconds. "
                     f"Return as JSON array of scene objects."
                 )
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
@@ -80,8 +84,12 @@ class ScriptwriterCapability(ICapability):
         groq_key = os.getenv("GROQ_API_KEY", "")
         if groq_key:
             try:
+                base_prompt = f"Write a 4-scene short video script for '{title}'."
+                if vision_context:
+                    base_prompt += f"\n\nCRITICAL INSTRUCTION: Incorporate these user-uploaded media into the scenes seamlessly: {vision_context}"
+                    
                 prompt = (
-                    f"Write a 4-scene short video script for '{title}'. "
+                    f"{base_prompt}\n\n"
                     f"Each scene: scene_number, heading, narration_text, visual_prompt, camera_direction, estimated_duration_seconds. "
                     f"Return JSON array."
                 )
@@ -106,6 +114,7 @@ class ScriptwriterCapability(ICapability):
         self,
         title: str = "",
         outline: Dict[str, Any] | None = None,
+        vision_descriptions: Dict[str, str] | None = None,
         words_per_minute: int = 150,
         **kwargs: Any,
     ) -> Dict[str, Any]:
@@ -114,9 +123,14 @@ class ScriptwriterCapability(ICapability):
             title = "The Dawn of AI Storytelling"
 
         artifact_id = f"scr-{uuid.uuid4().hex[:8]}"
+        
+        vision_context = ""
+        if vision_descriptions:
+            for k, v in vision_descriptions.items():
+                vision_context += f"- Asset ID {k}: {v}\n"
 
         # Try live LLM
-        llm_response = await self._call_llm(title)
+        llm_response = await self._call_llm(title, vision_context)
 
         if llm_response:
             import json as json_mod

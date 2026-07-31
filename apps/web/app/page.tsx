@@ -14,53 +14,14 @@ export default function StudioDashboard() {
     try {
       setLoading(true);
       const res = await getProjects();
-      if (res && res.projects && res.projects.length > 0) {
+      if (res && res.projects) {
         setProjects(res.projects);
       } else {
-        // Fallback default sample project if backend DB empty
-        setProjects([
-          {
-            id: "proj-printing-press",
-            title: "The Invention of Printing Press",
-            topic: "How Gutenberg revolutionized information sharing and humanity",
-            content_pack_name: "history",
-            aspect_ratio: "9:16",
-            status: "completed",
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "proj-quantum-computing",
-            title: "Quantum Computing Breakdown",
-            topic: "Superposition, Qubits, and the future of computation",
-            content_pack_name: "technology",
-            aspect_ratio: "9:16",
-            status: "processing",
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        setProjects([]);
       }
     } catch (err) {
-      console.warn("Failed to fetch projects from backend API, using defaults:", err);
-      setProjects([
-        {
-          id: "proj-printing-press",
-          title: "The Invention of Printing Press",
-          topic: "How Gutenberg revolutionized information sharing and humanity",
-          content_pack_name: "history",
-          aspect_ratio: "9:16",
-          status: "completed",
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: "proj-quantum-computing",
-          title: "Quantum Computing Breakdown",
-          topic: "Superposition, Qubits, and the future of computation",
-          content_pack_name: "technology",
-          aspect_ratio: "9:16",
-          status: "processing",
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      console.warn("Failed to fetch projects from backend API:", err);
+      setProjects([]);
     } finally {
       setLoading(false);
     }

@@ -15,6 +15,7 @@ from .reviewer import QualityReviewerCapability, ReviewReportArtifact
 from .revision import StoryRevisionCapability, RevisionArtifact
 from .exporter import MultiPlatformExporterCapability, ExportAssetsArtifact
 from .asset_manager import CloudinaryAssetManagerCapability, CDNAssetArtifact
+from .vision_analyzer import VisionAnalyzerCapability, VisionAnalysisArtifact
 from ..registry.store import CapabilityRegistry
 
 # Register capabilities in CapabilityRegistry
@@ -33,6 +34,7 @@ _reviewer_cap = QualityReviewerCapability()
 _revision_cap = StoryRevisionCapability()
 _exporter_cap = MultiPlatformExporterCapability()
 _cdn_asset_mgr_cap = CloudinaryAssetManagerCapability()
+_vision_analyzer_cap = VisionAnalyzerCapability()
 
 CapabilityRegistry.register_capability(_research_cap.name, _research_cap)
 CapabilityRegistry.register_capability(_fact_cap.name, _fact_cap)
@@ -49,6 +51,7 @@ CapabilityRegistry.register_capability(_reviewer_cap.name, _reviewer_cap)
 CapabilityRegistry.register_capability(_revision_cap.name, _revision_cap)
 CapabilityRegistry.register_capability(_exporter_cap.name, _exporter_cap)
 CapabilityRegistry.register_capability(_cdn_asset_mgr_cap.name, _cdn_asset_mgr_cap)
+CapabilityRegistry.register_capability(_vision_analyzer_cap.name, _vision_analyzer_cap)
 
 __all__ = [
     "DeepResearchCapability",
@@ -81,4 +84,6 @@ __all__ = [
     "ExportAssetsArtifact",
     "CloudinaryAssetManagerCapability",
     "CDNAssetArtifact",
+    "VisionAnalyzerCapability",
+    "VisionAnalysisArtifact",
 ]

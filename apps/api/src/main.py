@@ -105,11 +105,13 @@ from .routes.auth import router as auth_router
 from .routes.projects import router as projects_router
 from .routes.runtime import router as runtime_router
 from .routes.settings import router as settings_router
+from .routes.assets import router as assets_router
 
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(runtime_router)
 app.include_router(settings_router)
+app.include_router(assets_router)
 
 
 @app.get("/health")

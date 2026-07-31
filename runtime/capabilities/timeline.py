@@ -86,6 +86,7 @@ class TimelineEngineCapability(ICapability):
                         "duration_seconds": round(dur, 2),
                         "end_offset": round(curr_video_offset + dur, 2),
                         "transition_in": "fade" if idx > 0 else "none",
+                        "filters": {"brightness": 0, "contrast": 1, "volume": 1}
                     }
                 )
                 curr_video_offset += dur
@@ -94,11 +95,12 @@ class TimelineEngineCapability(ICapability):
             video_track.append(
                 {
                     "clip_id": "vclip-fallback-1",
-                    "url": "https://cdn.storyforge.ai/videos/veo/scene_1.mp4",
+                    "url": "https://res.cloudinary.com/demo/video/upload/dog.mp4",
                     "start_offset": 0.0,
                     "duration_seconds": 10.0,
                     "end_offset": 10.0,
                     "transition_in": "none",
+                    "filters": {"brightness": 0, "contrast": 1, "volume": 1}
                 }
             )
             curr_video_offset = 10.0
@@ -114,6 +116,7 @@ class TimelineEngineCapability(ICapability):
                         "start_offset": round(curr_audio_offset, 2),
                         "duration_seconds": round(dur, 2),
                         "end_offset": round(curr_audio_offset + dur, 2),
+                        "filters": {"volume": 1}
                     }
                 )
                 curr_audio_offset += dur
@@ -125,6 +128,7 @@ class TimelineEngineCapability(ICapability):
                     "start_offset": 0.0,
                     "duration_seconds": 10.0,
                     "end_offset": 10.0,
+                    "filters": {"volume": 1}
                 }
             )
             curr_audio_offset = 10.0
