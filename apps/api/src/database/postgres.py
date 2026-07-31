@@ -1,6 +1,7 @@
 """PostgreSQL Database Layer using SQLAlchemy 2.0 Declarative Models."""
 
 import os
+import re
 from datetime import datetime
 from typing import AsyncGenerator, Any
 import uuid
@@ -33,6 +34,12 @@ if DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
     elif DATABASE_URL.startswith("postgresql://"):
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    # Strip channel_binding query param if present (Neon URL parameter unsupported by asyncpg driver)
+    if "channel_binding=" in DATABASE_URL:
+        DATABASE_URL = re.sub(r"[&?]channel_binding=[^&]*", "", DATABASE_URL)
+        if "?" not in DATABASE_URL and "&" in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace("&", "?", 1)
 
     engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 else:
