@@ -62,3 +62,16 @@ class TaskStatusResponse(BaseModel):
     error: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
+
+
+class AssetResponse(BaseModel):
+    id: str
+    project_id: str
+    asset_type: str
+    provider_name: str
+    storage_url: str
+    file_size_bytes: int
+    mime_type: str
+    metadata_json: Dict[str, Any]
+    created_at: str
+
