@@ -39,42 +39,46 @@ export default function VideoPreviewPlayer({
         </div>
       </div>
 
-      {/* Video Viewport Mock */}
+      {/* Video Viewport */}
       <div
         className={`relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800 flex flex-col justify-between p-4 shadow-2xl transition-all ${
           isVertical ? "w-64 h-[440px]" : "w-full max-w-xl h-[320px]"
         }`}
       >
+        {/* Real HTML5 Video Stream */}
+        {videoUrl ? (
+          <video
+            src={videoUrl}
+            controls
+            autoPlay={isPlaying}
+            loop
+            className="absolute inset-0 w-full h-full object-cover z-0"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-slate-900 flex items-center justify-center text-xs text-slate-500">
+            Rendering video stream...
+          </div>
+        )}
+
         {/* Top Overlay Badge */}
-        <div className="flex items-center justify-between z-10">
+        <div className="flex items-center justify-between z-10 pointer-events-none">
           <span className="px-2 py-0.5 rounded bg-black/60 backdrop-blur-md text-[10px] font-bold text-emerald-400 uppercase tracking-widest border border-emerald-500/30">
             1080p H.264
           </span>
           <span className="text-[10px] font-mono text-slate-400">60 FPS</span>
         </div>
 
-        {/* Center Play Button & Visual Placeholder */}
-        <div className="flex flex-col items-center justify-center space-y-3 my-auto z-10">
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="h-14 w-14 rounded-full gradient-button flex items-center justify-center text-white shadow-xl hover:scale-105 transition"
-          >
-            {isPlaying ? "❚❚" : "▶"}
-          </button>
-          <p className="text-xs text-slate-300 font-medium text-center px-4 line-clamp-1">{title}</p>
-        </div>
-
         {/* Subtitle Highlight Overlay Mock */}
         {showSubtitles && (
-          <div className="z-10 text-center mb-2">
+          <div className="z-10 text-center mb-2 pointer-events-none">
             <span className="px-3 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-yellow-500/40 text-xs font-bold text-yellow-300 shadow-lg inline-block">
-              StoryForge AI <span className="text-white">transforms video creation</span>
+              {title}
             </span>
           </div>
         )}
 
-        {/* Background Ambient Glow */}
-        <div className="absolute inset-0 bg-gradient-to-t from-indigo-950/40 via-transparent to-black/60 pointer-events-none"></div>
+        {/* Background Ambient Gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/40 pointer-events-none z-5"></div>
       </div>
     </div>
   );

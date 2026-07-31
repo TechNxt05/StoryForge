@@ -27,20 +27,84 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   return response.json();
 }
 
-// Projects API
+// Projects API with LocalStorage sync fallback
 export async function getProjects() {
-  return fetchApi<{ projects: any[]; total_count: number }>("/api/v1/projects");
+  let localProjects: any[] = [];
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("storyforge_local_projects");
+      if (stored) localProjects = JSON.parse(stored);
+    } catch (e) {}
+  }
+
+  try {
+    const data = await fetchApi<{ projects: any[]; total_count: number }>("/api/v1/projects");
+    if (data && data.projects) {
+      // Merge backend projects with local projects (avoid duplicates by ID)
+      const backendIds = new Set(data.projects.map((p) => p.id));
+      const uniqueLocal = localProjects.filter((p) => !backendIds.has(p.id));
+      const combined = [...uniqueLocal, ...data.projects];
+      return { projects: combined, total_count: combined.length };
+    }
+  } catch (e) {
+    console.warn("Backend API offline/error, returning local projects:", e);
+  }
+
+  return { projects: localProjects, total_count: localProjects.length };
 }
 
 export async function createProject(payload: { title: string; topic: string; content_pack_name: string; aspect_ratio?: string }) {
-  return fetchApi<any>("/api/v1/projects", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  let newProject: any = null;
+  try {
+    newProject = await fetchApi<any>("/api/v1/projects", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.warn("Failed to create project on backend, saving locally:", e);
+    newProject = {
+      id: `proj-${Math.random().toString(36).substring(2, 9)}`,
+      title: payload.title,
+      topic: payload.topic,
+      content_pack_name: payload.content_pack_name,
+      aspect_ratio: payload.aspect_ratio || "9:16",
+      status: "draft",
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  // Save to localStorage
+  if (typeof window !== "undefined" && newProject) {
+    try {
+      const stored = localStorage.getItem("storyforge_local_projects");
+      const existing = stored ? JSON.parse(stored) : [];
+      localStorage.setItem("storyforge_local_projects", JSON.stringify([newProject, ...existing]));
+    } catch (err) {}
+  }
+
+  return newProject;
 }
 
 export async function getProjectById(id: string) {
-  return fetchApi<any>(`/api/v1/projects/${id}`);
+  try {
+    const data = await fetchApi<any>(`/api/v1/projects/${id}`);
+    if (data) return data;
+  } catch (e) {
+    console.warn(`Backend could not find project ${id}, checking localStorage:`, e);
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("storyforge_local_projects");
+      if (stored) {
+        const existing: any[] = JSON.parse(stored);
+        const match = existing.find((p) => p.id === id);
+        if (match) return match;
+      }
+    } catch (err) {}
+  }
+
+  return null;
 }
 
 // Auth API
