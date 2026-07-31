@@ -153,7 +153,7 @@ export default function CanvasStudioPage() {
   }, [projectId]);
 
   const handleClipUpdate = (updatedClip: TimelineClip) => {
-    setClips(clips.map(c => c.id === updatedClip.id ? updatedClip : c));
+    setClips(clips.map((c: TimelineClip) => (c.id === updatedClip.id ? updatedClip : c)));
   };
 
   const handleUploadMedia = async (file: File) => {
@@ -163,7 +163,8 @@ export default function CanvasStudioPage() {
       formData.append("file", file);
       formData.append("asset_type", file.type.startsWith("image") ? "image" : "video");
       
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "https://storyforge-snc4.onrender.com";
+      const g = typeof globalThis !== "undefined" ? (globalThis as any) : {};
+      const baseUrl = g.process?.env?.NEXT_PUBLIC_API_URL || "https://storyforge-snc4.onrender.com";
       const res = await fetch(`${baseUrl}/api/v1/projects/${projectId}/assets/upload`, {
         method: "POST",
         body: formData,
@@ -191,7 +192,7 @@ export default function CanvasStudioPage() {
   const handleReRunPipeline = async () => {
     setIsGenerating(true);
     // Animate nodes to running state
-    setNodes(nodes.map(n => ({ ...n, status: "running" })));
+    setNodes(nodes.map((n: DAGNode) => ({ ...n, status: "running" })));
     
     try {
       const topic = project?.topic || "Autonomous Storytelling Pipeline";
@@ -200,7 +201,7 @@ export default function CanvasStudioPage() {
       console.warn("Error re-running pipeline API:", err);
     } finally {
       setTimeout(() => {
-        setNodes(nodes.map(n => ({ ...n, status: "completed" })));
+        setNodes(nodes.map((n: DAGNode) => ({ ...n, status: "completed" })));
         setIsGenerating(false);
       }, 2500);
     }
@@ -210,17 +211,17 @@ export default function CanvasStudioPage() {
     setIsChatProcessing(true);
     
     // Simulate DAG pipeline steps animating while processing prompt
-    setNodes(nodes.map((n, idx) => idx === 1 ? { ...n, status: "running" } : n));
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setNodes(nodes.map((n, idx) => idx === 5 ? { ...n, status: "running" } : { ...n, status: "completed" }));
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setNodes(nodes.map(n => ({ ...n, status: "completed" })));
+    setNodes(nodes.map((n: DAGNode, idx: number) => (idx === 1 ? { ...n, status: "running" } : n)));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setNodes(nodes.map((n: DAGNode, idx: number) => (idx === 5 ? { ...n, status: "running" } : { ...n, status: "completed" })));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setNodes(nodes.map((n: DAGNode) => ({ ...n, status: "completed" })));
 
     // Apply AI updates to clips and preview
     if (message.toLowerCase().includes("bright")) {
-      setClips(prev => prev.map(c => c.type === "video" ? { ...c, filters: { ...c.filters, brightness: 0.5 } } : c));
+      setClips((prev: TimelineClip[]) => prev.map((c: TimelineClip) => (c.type === "video" ? { ...c, filters: { ...c.filters, brightness: 0.5 } } : c)));
     } else if (message.toLowerCase().includes("quote") || message.toLowerCase().includes("scene")) {
-      setClips(prev => [
+      setClips((prev: TimelineClip[]) => [
         ...prev,
         {
           id: `vclip-${Date.now()}`,
@@ -242,7 +243,7 @@ export default function CanvasStudioPage() {
     setTimeout(() => setExportNotice(""), 5000);
   };
 
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId) || nodes[0];
+  const selectedNode = nodes.find((n: DAGNode) => n.id === selectedNodeId) || nodes[0];
   const projectTitle = project?.title || "Story Project Studio";
 
   return (
