@@ -35,13 +35,24 @@ if DATABASE_URL:
     elif DATABASE_URL.startswith("postgresql://"):
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-    # Strip channel_binding query param if present (Neon URL parameter unsupported by asyncpg driver)
+    # Check if SSL is required before stripping driver-incompatible URL query parameters
+    need_ssl = any(term in DATABASE_URL for term in ["sslmode=", "ssl=", "sslmode"])
+
+    # Strip query parameters unsupported by asyncpg driver (sslmode, channel_binding)
+    if "sslmode=" in DATABASE_URL:
+        DATABASE_URL = re.sub(r"[&?]sslmode=[^&]*", "", DATABASE_URL)
     if "channel_binding=" in DATABASE_URL:
         DATABASE_URL = re.sub(r"[&?]channel_binding=[^&]*", "", DATABASE_URL)
-        if "?" not in DATABASE_URL and "&" in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace("&", "?", 1)
 
-    engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+    # Fix question mark formatting if first parameter was stripped
+    if "?" not in DATABASE_URL and "&" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("&", "?", 1)
+
+    connect_args: dict[str, Any] = {}
+    if need_ssl:
+        connect_args["ssl"] = True
+
+    engine = create_async_engine(DATABASE_URL, connect_args=connect_args, echo=False, future=True)
 else:
     # Free tier fallback: SQLite via aiosqlite (zero-config, no external DB needed)
     _sqlite_url = "sqlite+aiosqlite:///./storyforge.db"
