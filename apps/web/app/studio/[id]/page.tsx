@@ -1,316 +1,255 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
-import DAGNodeCanvas, { DAGNode } from "../../../components/DAGNodeCanvas";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import PipelineProgress from "../../../components/PipelineProgress";
 import VideoPreviewPlayer from "../../../components/VideoPreviewPlayer";
-import TimelineEditor, { TimelineClip } from "../../../components/TimelineEditor";
+import SceneEditor, { EditableScene } from "../../../components/SceneEditor";
 import EditorChat from "../../../components/EditorChat";
-import { getProjectById, generatePlan } from "../../../lib/api";
+import {
+  ApiError,
+  chatEdit,
+  deleteProject,
+  getProject,
+  Project,
+  saveScenes,
+  startGeneration,
+} from "../../../lib/api";
+import { useRequireAuth } from "../../../lib/useRequireAuth";
 
-export default function CanvasStudioPage() {
+const EDITABLE_KEYS = ["heading", "narration", "visual_prompt", "on_screen_text"] as const;
+
+function sceneKey(scenes: EditableScene[]): string {
+  return JSON.stringify(scenes.map((s) => EDITABLE_KEYS.map((k) => s[k])));
+}
+
+export default function StudioPage() {
+  const ready = useRequireAuth();
+  const router = useRouter();
   const params = useParams();
-  const projectId = (params?.id as string) || "proj-printing-press";
+  const projectId = params?.id as string;
 
-  const [project, setProject] = useState<any>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState("node-1");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isChatProcessing, setIsChatProcessing] = useState(false);
-  const [exportNotice, setExportNotice] = useState("");
-  const [currentVideoUrl, setCurrentVideoUrl] = useState("https://res.cloudinary.com/demo/video/upload/v1689255627/dog.mp4");
+  const [project, setProject] = useState<Project | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [scenes, setScenes] = useState<EditableScene[]>([]);
+  const [savedKey, setSavedKey] = useState(() => sceneKey([]));
+  const [busyAction, setBusyAction] = useState<"" | "save" | "render" | "regenerate" | "delete">("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const dirtyRef = useRef(false);
 
-  const [nodes, setNodes] = useState<DAGNode[]>([
-    {
-      id: "node-1",
-      name: "Deep Web Research",
-      capability: "web_scraper",
-      modelUsed: "DuckDuckGo HTML",
-      apiKeyType: "Zero-Key (Free)",
-      status: "completed",
-      duration: "1.2s",
-    },
-    {
-      id: "node-2",
-      name: "AI Director Planning",
-      capability: "scriptwriter",
-      modelUsed: "Gemini 1.5 Flash",
-      apiKeyType: "Free API Key",
-      status: "completed",
-      duration: "1.4s",
-    },
-    {
-      id: "node-3",
-      name: "Visual Vision Analysis",
-      capability: "vision_analyzer",
-      modelUsed: "Gemini 1.5 Pro Vision",
-      apiKeyType: "Free API Key",
-      status: "completed",
-      duration: "0.9s",
-    },
-    {
-      id: "node-4",
-      name: "Voiceover Synthesis",
-      capability: "voice_synthesizer",
-      modelUsed: "Kokoro-82M ONNX",
-      apiKeyType: "Local Execution",
-      status: "completed",
-      duration: "1.1s",
-    },
-    {
-      id: "node-5",
-      name: "YouTube B-Roll Sourcing",
-      capability: "youtube_fetcher",
-      modelUsed: "yt-dlp Engine",
-      apiKeyType: "Local Execution",
-      status: "completed",
-      duration: "2.3s",
-    },
-    {
-      id: "node-6",
-      name: "FFmpeg Composition",
-      capability: "ffmpeg_renderer",
-      modelUsed: "FFmpeg H.264/AAC CLI",
-      apiKeyType: "Local Execution",
-      status: "completed",
-      duration: "3.5s",
-    },
-  ]);
+  const jobActive = project?.job?.status === "queued" || project?.job?.status === "running";
+  const dirty = sceneKey(scenes) !== savedKey;
+  dirtyRef.current = dirty;
 
-  const [clips, setClips] = useState<TimelineClip[]>([
-    {
-      id: "vclip-1",
-      type: "video",
-      url: "https://res.cloudinary.com/demo/video/upload/v1689255627/dog.mp4",
-      startOffset: 0,
-      duration: 10,
-      filters: { brightness: 0, contrast: 1, volume: 1 },
-      name: "Scene 1: Match Intro & Setup",
-    },
-    {
-      id: "vclip-2",
-      type: "video",
-      url: "https://res.cloudinary.com/demo/video/upload/v1689255627/dog.mp4",
-      startOffset: 10,
-      duration: 12,
-      filters: { brightness: 0, contrast: 1, volume: 1 },
-      name: "Scene 2: MS Dhoni Steps Up Order",
-    },
-    {
-      id: "aclip-1",
-      type: "audio",
-      url: "https://cdn.storyforge.ai/audio/kokoro/scene_1.mp3",
-      startOffset: 0,
-      duration: 22,
-      filters: { brightness: 0, contrast: 1, volume: 1 },
-      name: "Voiceover: Cinematic Narration",
+  const applyProject = useCallback((p: Project, forceScenes = false) => {
+    setProject(p);
+    // Don't clobber unsaved edits with polling results.
+    if (forceScenes || !dirtyRef.current) {
+      const next = p.script?.scenes || [];
+      setScenes(next);
+      setSavedKey(sceneKey(next));
     }
-  ]);
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      applyProject(await getProject(projectId));
+      setLoadError("");
+    } catch (err) {
+      setLoadError(err instanceof ApiError && err.status === 404 ? "This project doesn't exist or belongs to another account." : (err as Error).message);
+    }
+  }, [projectId, applyProject]);
 
   useEffect(() => {
-    async function loadProjectDetails() {
-      try {
-        const data = await getProjectById(projectId);
-        if (data) {
-          setProject(data);
-          const title = data.title || "Story Project";
-          const topic = data.topic || "AI Generated Narrative";
-          setClips([
-            {
-              id: "vclip-1",
-              type: "video",
-              url: "https://res.cloudinary.com/demo/video/upload/v1689255627/dog.mp4",
-              startOffset: 0,
-              duration: 8,
-              filters: { brightness: 0, contrast: 1, volume: 1 },
-              name: `Act 1: ${title} - ${topic.slice(0, 30)}`,
-            },
-            {
-              id: "vclip-2",
-              type: "video",
-              url: "https://res.cloudinary.com/demo/video/upload/v1689255627/dog.mp4",
-              startOffset: 8,
-              duration: 10,
-              filters: { brightness: 0, contrast: 1, volume: 1 },
-              name: `Act 2: Strategic Turning Point`,
-            },
-            {
-              id: "aclip-1",
-              type: "audio",
-              url: "https://cdn.storyforge.ai/audio/kokoro/scene_1.mp3",
-              startOffset: 0,
-              duration: 18,
-              filters: { brightness: 0, contrast: 1, volume: 1 },
-              name: `Voiceover: ${title} Narrative`,
-            }
-          ]);
-        }
-      } catch (err) {
-        console.warn("Could not fetch project details from API, using local context:", err);
-      }
-    }
-    if (projectId) loadProjectDetails();
-  }, [projectId]);
+    if (ready && projectId) load();
+  }, [ready, projectId, load]);
 
-  const handleClipUpdate = (updatedClip: TimelineClip) => {
-    setClips(clips.map((c: TimelineClip) => (c.id === updatedClip.id ? updatedClip : c)));
-  };
+  useEffect(() => {
+    if (!jobActive) return;
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [jobActive, load]);
 
-  const handleUploadMedia = async (file: File) => {
-    setIsUploading(true);
+  const run = async (action: typeof busyAction, fn: () => Promise<void>) => {
+    setBusyAction(action);
+    setActionError("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("asset_type", file.type.startsWith("image") ? "image" : "video");
-      
-      const g = typeof globalThis !== "undefined" ? (globalThis as any) : {};
-      const baseUrl = g.process?.env?.NEXT_PUBLIC_API_URL || "https://storyforge-snc4.onrender.com";
-      const res = await fetch(`${baseUrl}/api/v1/projects/${projectId}/assets/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setClips([...clips, {
-          id: data.id,
-          type: data.asset_type,
-          url: data.storage_url,
-          startOffset: clips.length * 5,
-          duration: 5,
-          filters: { brightness: 0, contrast: 1, volume: 1 },
-          name: file.name
-        }]);
-      }
-    } catch (e) {
-      console.error("Upload failed", e);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleReRunPipeline = async () => {
-    setIsGenerating(true);
-    // Animate nodes to running state
-    setNodes(nodes.map((n: DAGNode) => ({ ...n, status: "running" })));
-    
-    try {
-      const topic = project?.topic || "Autonomous Storytelling Pipeline";
-      await generatePlan(topic, project?.content_pack_name || "history", project?.aspect_ratio || "9:16");
+      await fn();
     } catch (err) {
-      console.warn("Error re-running pipeline API:", err);
+      setActionError((err as Error).message);
     } finally {
-      setTimeout(() => {
-        setNodes(nodes.map((n: DAGNode) => ({ ...n, status: "completed" })));
-        setIsGenerating(false);
-      }, 2500);
+      setBusyAction("");
     }
   };
 
-  const handleChatCommand = async (message: string) => {
-    setIsChatProcessing(true);
-    
-    // Simulate DAG pipeline steps animating while processing prompt
-    setNodes(nodes.map((n: DAGNode, idx: number) => (idx === 1 ? { ...n, status: "running" } : n)));
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setNodes(nodes.map((n: DAGNode, idx: number) => (idx === 5 ? { ...n, status: "running" } : { ...n, status: "completed" })));
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setNodes(nodes.map((n: DAGNode) => ({ ...n, status: "completed" })));
+  const persistScenes = async () => {
+    const payload = scenes.map((s) => ({
+      heading: s.heading.trim() || "Scene",
+      narration: s.narration.trim(),
+      visual_prompt: s.visual_prompt.trim() || s.narration.trim(),
+      on_screen_text: s.on_screen_text.trim(),
+    }));
+    if (payload.some((s) => !s.narration)) throw new Error("Every scene needs narration text.");
+    const updated = await saveScenes(projectId, payload);
+    applyProject(updated, true);
+    return updated;
+  };
 
-    // Apply AI updates to clips and preview
-    if (message.toLowerCase().includes("bright")) {
-      setClips((prev: TimelineClip[]) => prev.map((c: TimelineClip) => (c.type === "video" ? { ...c, filters: { ...c.filters, brightness: 0.5 } } : c)));
-    } else if (message.toLowerCase().includes("quote") || message.toLowerCase().includes("scene")) {
-      setClips((prev: TimelineClip[]) => [
-        ...prev,
-        {
-          id: `vclip-${Date.now()}`,
-          type: "image",
-          url: "https://pollinations.ai/p/Dhoni_winning_moment_stadium",
-          startOffset: prev.length * 5,
-          duration: 6,
-          filters: { brightness: 0.2, contrast: 1.1 },
-          name: `Frame: "${message.slice(0, 30)}..."`
-        }
-      ]);
+  const handleSave = () => run("save", async () => void (await persistScenes()));
+
+  const handleRender = () =>
+    run("render", async () => {
+      const regen = scenes.flatMap((s, i) => (s.regenerateImage ? [i] : []));
+      if (dirty) await persistScenes();
+      applyProject(await startGeneration(projectId, "rerender", regen), true);
+    });
+
+  const handleRegenerate = () => {
+    const hasScript = (project?.script?.scenes?.length || 0) > 0;
+    if (hasScript && !window.confirm("Write a brand-new script and images from scratch? Your current script edits will be replaced.")) return;
+    run("regenerate", async () => applyProject(await startGeneration(projectId, "full"), true));
+  };
+
+  const handleDelete = () => {
+    if (!window.confirm("Delete this project and its video? This can't be undone.")) return;
+    run("delete", async () => {
+      await deleteProject(projectId);
+      router.push("/");
+    });
+  };
+
+  const handleChat = async (message: string) => {
+    setChatBusy(true);
+    setChatError("");
+    try {
+      if (dirty) await persistScenes();
+      const res = await chatEdit(projectId, message);
+      applyProject(res.project, true);
+    } catch (err) {
+      setChatError((err as Error).message);
+    } finally {
+      setChatBusy(false);
     }
-
-    setIsChatProcessing(false);
   };
 
-  const handleExport = () => {
-    setExportNotice("Export package compiled! Video MP4 + Subtitle SRT rendered via FFmpeg CLI.");
-    setTimeout(() => setExportNotice(""), 5000);
-  };
+  const script = project?.script;
+  const totalWords = useMemo(() => scenes.reduce((n, s) => n + (s.narration.trim() ? s.narration.trim().split(/\s+/).length : 0), 0), [scenes]);
 
-  const selectedNode = nodes.find((n: DAGNode) => n.id === selectedNodeId) || nodes[0];
-  const projectTitle = project?.title || "Story Project Studio";
+  if (loadError) {
+    return (
+      <div className="max-w-lg mx-auto glass-card rounded-2xl p-8 text-center border border-slate-800">
+        <p className="text-sm text-rose-300 mb-4">{loadError}</p>
+        <div className="flex justify-center gap-3">
+          <button onClick={load} className="px-4 py-2 rounded-xl bg-slate-800 text-xs font-semibold">Retry</button>
+          <Link href="/" className="px-4 py-2 rounded-xl gradient-button text-xs font-bold text-white">Back to projects</Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return <div className="text-center py-16 text-slate-400 text-sm animate-pulse">Loading project…</div>;
+  }
+
+  const locked = jobActive || busyAction !== "";
+  const hasScript = scenes.length > 0;
 
   return (
     <div className="space-y-6">
-      {/* Studio Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-800 gap-4">
-        <div>
-          <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">
-            Unified Studio (DAG Roadmap + Canva Frame Deck)
-          </span>
-          <h1 className="text-2xl font-extrabold text-white mt-0.5">{projectTitle}</h1>
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between pb-4 border-b border-slate-800 gap-4">
+        <div className="min-w-0">
+          <Link href="/" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">← All projects</Link>
+          <h1 className="text-2xl font-extrabold text-white mt-1 break-words">{project.title}</h1>
+          <p className="text-xs text-slate-400 mt-1 line-clamp-2">{project.topic}</p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition"
-          >
-            Export Video &rarr;
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={handleDelete} disabled={locked} className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-40">
+            Delete
           </button>
-          <button
-            onClick={handleReRunPipeline}
-            disabled={isGenerating}
-            className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg disabled:opacity-50"
-          >
-            {isGenerating ? "Executing Pipeline..." : "Re-Run DAG Pipeline"}
+          <button onClick={handleRegenerate} disabled={locked} className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 disabled:opacity-40">
+            {hasScript ? "New script" : "Generate video"}
           </button>
+          {hasScript && (
+            <button onClick={handleRender} disabled={locked} className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg disabled:opacity-50">
+              {jobActive ? "Rendering…" : busyAction === "render" ? "Starting…" : dirty ? "Save & re-render" : "Re-render video"}
+            </button>
+          )}
         </div>
       </div>
 
-      {exportNotice && (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
-          ✨ {exportNotice}
+      {actionError && (
+        <div role="alert" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">{actionError}</div>
+      )}
+
+      {project.job && <PipelineProgress job={project.job} />}
+
+      {script?.warning && !jobActive && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
+          No AI writer was reachable, so a basic script was assembled from Wikipedia. Add a free Gemini or Groq key in your server
+          settings for much better scripts.
         </div>
       )}
 
-      {/* Execution Progress & DAG Roadmap */}
-      <DAGNodeCanvas
-        nodes={nodes}
-        selectedNodeId={selectedNodeId}
-        onSelectNode={(id) => setSelectedNodeId(id)}
-      />
-
-      {/* Main Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Left Column: Live Player Preview & Chatbot */}
-        <div className="lg:col-span-1 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-2 space-y-6">
           <VideoPreviewPlayer
-            videoUrl={currentVideoUrl}
-            aspectRatio={project?.aspect_ratio || "9:16"}
-            title={projectTitle}
+            video={project.video}
+            poster={project.thumbnail_url}
+            aspectRatio={project.aspect_ratio}
+            title={project.title}
+            busy={jobActive}
+            stale={project.stale}
           />
-          <EditorChat 
-            onSendMessage={handleChatCommand} 
-            isProcessing={isChatProcessing} 
-          />
+          <EditorChat history={project.chat || []} onSendMessage={handleChat} isProcessing={chatBusy} disabled={!hasScript || locked} error={chatError} />
+
+          {script?.sources && script.sources.length > 0 && (
+            <div className="glass-card rounded-2xl p-5 border border-slate-800">
+              <h3 className="font-bold text-sm text-slate-300 uppercase tracking-wider mb-3">Research sources</h3>
+              <ul className="space-y-1.5">
+                {script.sources.map((s) => (
+                  <li key={s.url}>
+                    <a href={s.url} target="_blank" rel="noreferrer" className="text-xs text-indigo-300 hover:underline">{s.title} ↗</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
-        {/* Right Column: Canva Slide Deck & Frame Inspector */}
-        <div className="lg:col-span-2 space-y-6">
-          <TimelineEditor 
-            clips={clips} 
-            onClipUpdate={handleClipUpdate} 
-            onUpload={handleUploadMedia}
-            isUploading={isUploading}
-          />
+        <div className="lg:col-span-3 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-sm text-slate-300 uppercase tracking-wider">Script &amp; scenes</h2>
+              {hasScript && (
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {scenes.length} scenes · {totalWords} words · ~{Math.round(totalWords / 2.5)}s
+                  {script?.provider && ` · written by ${script.provider}`}
+                </p>
+              )}
+            </div>
+            {hasScript && (
+              <button
+                onClick={handleSave}
+                disabled={!dirty || locked}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 disabled:opacity-40"
+              >
+                {busyAction === "save" ? "Saving…" : dirty ? "Save changes" : "Saved"}
+              </button>
+            )}
+          </div>
+
+          {hasScript ? (
+            <SceneEditor scenes={scenes} onChange={setScenes} disabled={locked} />
+          ) : (
+            <div className="glass-card rounded-2xl p-10 text-center border border-slate-800 text-sm text-slate-400">
+              {jobActive ? "The script will appear here as soon as it's written." : "No script yet. Click “Generate video” to start."}
+            </div>
+          )}
         </div>
       </div>
     </div>

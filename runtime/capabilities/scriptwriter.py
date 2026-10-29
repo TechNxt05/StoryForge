@@ -1,6 +1,5 @@
 """Scriptwriting & Narration Capability for StoryForge Runtime."""
 
-import os
 import uuid
 from typing import Any, Dict, List
 from ..interfaces import IArtifact, ICapability
@@ -50,68 +49,25 @@ class ScriptwriterCapability(ICapability):
         return "scriptwriter"
 
     async def _call_llm(self, title: str, vision_context: str = "") -> str | None:
-        """Call Gemini or Groq for real script generation, utilizing vision context if provided."""
-        import httpx
+        """Call the first available free LLM (see runtime.llm) for script generation."""
+        from .. import llm
 
-        # Try Gemini first
-        gemini_key = os.getenv("GEMINI_API_KEY", "")
-        if gemini_key:
-            try:
-                base_prompt = (
-                    f"You are an expert Film Director. Create a 4-scene video blueprint for '{title}'.\n"
-                    f"First, determine the overall MOOD/TONE of the story (e.g., 'emotional', 'exciting', 'heroic').\n"
-                    f"Select a matching Kokoro voice model tone (e.g., 'af_heart' for emotional, 'am_adam' for exciting, 'af_sarah' for dramatic).\n"
-                    f"Select a matching background music style (e.g., 'symphony_dhoni', 'cinematic_orchestral', 'upbeat_electronic').\n"
-                )
-                if vision_context:
-                    base_prompt += f"\nVisual context of uploaded media:\n{vision_context}\n"
-                
-                prompt = (
-                    f"{base_prompt}\n"
-                    f"Return a JSON object with keys: tone, voice_model, music_style, scenes (list of objects with: scene_number, heading, narration_text, visual_prompt, camera_direction, estimated_duration_seconds, text_overlay)."
-                )
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.7},
-                }
-                async with httpx.AsyncClient(timeout=25.0) as client:
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        return data["candidates"][0]["content"]["parts"][0]["text"]
-            except Exception as e:
-                print(f"[Scriptwriter] Gemini call failed: {e}")
-
-        # Try Groq as backup
-        groq_key = os.getenv("GROQ_API_KEY", "")
-        if groq_key:
-            try:
-                base_prompt = f"Write a 4-scene short video script for '{title}'."
-                if vision_context:
-                    base_prompt += f"\n\nCRITICAL INSTRUCTION: Incorporate these user-uploaded media into the scenes seamlessly: {vision_context}"
-                    
-                prompt = (
-                    f"{base_prompt}\n\n"
-                    f"Each scene: scene_number, heading, narration_text, visual_prompt, camera_direction, estimated_duration_seconds. "
-                    f"Return JSON array."
-                )
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
-                payload = {
-                    "model": "llama-3.3-70b-versatile",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                }
-                async with httpx.AsyncClient(timeout=20.0) as client:
-                    resp = await client.post(url, headers=headers, json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        return data["choices"][0]["message"]["content"]
-            except Exception as e:
-                print(f"[Scriptwriter] Groq call failed: {e}")
-
-        return None
+        prompt = (
+            f"You are an expert film director. Create a 4-scene short video blueprint for '{title}'.\n"
+            "Determine the overall mood and choose a matching background music style.\n"
+        )
+        if vision_context:
+            prompt += f"\nIncorporate these user-uploaded media into the scenes:\n{vision_context}\n"
+        prompt += (
+            "\nReturn a JSON object with keys: tone, music_style, scenes (list of objects with: scene_number, heading, "
+            "narration_text, visual_prompt, camera_direction, estimated_duration_seconds, text_overlay)."
+        )
+        try:
+            result = await llm.complete(prompt, system="You write short documentary scripts.", json_mode=True)
+            return result.text
+        except llm.LLMUnavailableError as e:
+            print(f"[Scriptwriter] No LLM available: {e}")
+            return None
 
     async def execute(
         self,

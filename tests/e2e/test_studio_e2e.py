@@ -1,51 +1,90 @@
-"""E2E Integration & System Audit Remediation Test Suite."""
+"""End-to-end: sign up, generate a real MP4 (offline providers), edit, re-render, delete."""
 
-import sys
+import asyncio
 from pathlib import Path
+
 import httpx
 import pytest
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
 from apps.api.src.main import app
+from runtime import media, pipeline
+
+
+async def _wait_for_job(c: httpx.AsyncClient, project_id: str, headers: dict, timeout: float = 180) -> dict:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        data = (await c.get(f"/api/v1/projects/{project_id}", headers=headers)).json()
+        if data["job"]["status"] in ("completed", "failed"):
+            return data
+        assert asyncio.get_event_loop().time() < deadline, f"job did not finish: {data['job']}"
+        await asyncio.sleep(0.5)
 
 
 @pytest.mark.asyncio
-async def test_e2e_user_signup_login_and_workflow() -> None:
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        # Step 1: User Signup
-        signup_req = {
-            "email": "e2e_creator@storyforge.ai",
-            "password": "e2e_password_123",
-            "full_name": "E2E Creator User",
-        }
-        signup_res = await client.post("/api/v1/auth/signup", json=signup_req)
-        assert signup_res.status_code == 201
-        token = signup_res.json()["access_token"]
-        assert token is not None
+async def test_e2e_signup_generate_edit_rerender(offline_media, monkeypatch) -> None:
+    async def no_wikipedia(*_args, **_kwargs):
+        return [{"title": "Spaceflight", "url": "https://en.wikipedia.org/wiki/Spaceflight",
+                 "extract": "Spaceflight is the use of space technology to fly spacecraft into outer space. "
+                            "It is used for exploration and commercial activity. Humans first flew to space in 1961."}]
 
-        headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(pipeline, "wikipedia_context", no_wikipedia)
 
-        # Step 2: Query Current User Profile
-        me_res = await client.get("/api/v1/auth/me", headers=headers)
-        assert me_res.status_code == 200
-        assert me_res.json()["user"]["email"] == "e2e_creator@storyforge.ai"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        signup = await c.post(
+            "/api/v1/auth/signup",
+            json={"email": "E2E_Creator@StoryForge.ai", "password": "e2e_password_123", "full_name": "E2E Creator"},
+        )
+        assert signup.status_code == 201
+        headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
 
-        # Step 3: Create Project
-        proj_req = {
-            "title": "E2E Story Project",
-            "topic": "Space Travel and Artificial Intelligence",
-            "content_pack_name": "technology",
-            "aspect_ratio": "9:16",
-        }
-        proj_res = await client.post("/api/v1/projects", json=proj_req, headers=headers)
-        assert proj_res.status_code == 201
-        proj_id = proj_res.json()["id"]
+        # Email is case-insensitive and normalized.
+        login = await c.post("/api/v1/auth/login", json={"email": "e2e_creator@storyforge.ai", "password": "e2e_password_123"})
+        assert login.status_code == 200
+        me = await c.get("/api/v1/auth/me", headers=headers)
+        assert me.json()["user"]["email"] == "e2e_creator@storyforge.ai"
 
-        # Step 4: Verify Masked Key Settings
-        keys_res = await client.get("/api/v1/settings/keys", headers=headers)
-        assert keys_res.status_code == 200
-        keys = keys_res.json()
-        assert "gemini" in keys
+        created = await c.post(
+            "/api/v1/projects",
+            json={"title": "Space Travel", "topic": "How humans reached space", "content_pack_name": "science",
+                  "aspect_ratio": "16:9", "target_seconds": 20},
+            headers=headers,
+        )
+        assert created.status_code == 201
+        project_id = created.json()["id"]
+        assert created.json()["job"]["status"] in ("queued", "running")
+
+        done = await _wait_for_job(c, project_id, headers)
+        assert done["status"] == "completed", done["job"]
+        # No LLM is reachable in tests, so the offline template writer is used and flagged.
+        assert done["script"]["provider"] == "template"
+        assert done["script"]["warning"]
+        video = done["video"]
+        assert video["url"].startswith("/media/") and video["width"] == 1024 and video["duration"] > 3
+        assert Path(media.MEDIA_DIR, video["url"].removeprefix("/media/")).stat().st_size > 1000
+        assert all(s["status"] in ("completed", "skipped") for s in done["job"]["steps"].values())
+
+        # Generated media are served and listed in the asset library.
+        assert (await c.get(video["url"])).status_code == 200
+        assets = (await c.get("/api/v1/assets", headers=headers)).json()["assets"]
+        assert {a["asset_type"] for a in assets} == {"video", "image"}
+
+        # Chat editing needs an LLM: it reports unavailability instead of failing silently.
+        chat = await c.post(f"/api/v1/projects/{project_id}/chat", json={"message": "shorter"}, headers=headers)
+        assert chat.status_code == 503
+
+        # Manual edit + re-render reuses the script and produces a new video.
+        scenes = [{k: s[k] for k in ("heading", "narration", "visual_prompt", "on_screen_text")} for s in done["script"]["scenes"]]
+        scenes[0]["narration"] = "An edited opening line for the video."
+        assert (await c.put(f"/api/v1/projects/{project_id}/scenes", json={"scenes": scenes}, headers=headers)).status_code == 200
+        rerender = await c.post(f"/api/v1/projects/{project_id}/generate", json={"mode": "rerender"}, headers=headers)
+        assert rerender.status_code == 202
+        redone = await _wait_for_job(c, project_id, headers)
+        assert redone["status"] == "completed"
+        assert redone["job"]["steps"]["script"]["status"] == "skipped"
+        assert redone["script"]["scenes"][0]["narration"] == "An edited opening line for the video."
+        assert redone["stale"] is False
+        assert len(redone["history"]) == 2
+
+        assert (await c.delete(f"/api/v1/projects/{project_id}", headers=headers)).status_code == 204
+        assert (await c.get(f"/api/v1/projects/{project_id}", headers=headers)).status_code == 404
+        assert not (media.MEDIA_DIR / project_id).exists()

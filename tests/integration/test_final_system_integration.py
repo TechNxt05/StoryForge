@@ -23,10 +23,9 @@ async def test_full_system_gateway_health() -> None:
 
         data = res.json()
         assert data["status"] == "ok"
-        assert data["service"] == "storyforge-api-gateway"
+        assert data["service"] == "storyforge-api"
         assert data["registered_capabilities_count"] >= 15
-        assert data["content_packs_count"] >= 5
-        assert data["worker_cluster_nodes"] >= 1
+        assert data["storage"] in ("local", "cloudinary")
 
 
 @pytest.mark.asyncio
@@ -39,17 +38,21 @@ async def test_full_system_project_and_runtime_workflow() -> None:
             "content_pack_name": "history",
             "aspect_ratio": "9:16",
         }
-        create_res = await client.post("/api/v1/projects", json=proj_req)
+        signup = await client.post(
+            "/api/v1/auth/signup", json={"email": "final-integration@test.dev", "password": "password123", "full_name": "F"}
+        )
+        headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+        create_res = await client.post("/api/v1/projects", json={**proj_req, "auto_generate": False}, headers=headers)
         assert create_res.status_code == 201
 
         # Generate DAG plan
-        plan_req = {"goal": "The History of Aviation", "content_pack_name": "history"}
-        plan_res = await client.post("/api/v1/runtime/plan", json=plan_req)
+        plan_req = {"goal": "The History of Aviation", "content_pack": "history"}
+        plan_res = await client.post("/api/v1/runtime/plan", json=plan_req, headers=headers)
         assert plan_res.status_code == 200
         assert len(plan_res.json()["steps"]) >= 4
 
         # Execute capability step via runtime engine
-        exec_req = {"capability_name": "deep_research", "input_data": {"topic": "The History of Aviation"}}
-        exec_res = await client.post("/api/v1/runtime/execute", json=exec_req)
+        exec_req = {"capability_name": "deep_research", "kwargs": {"topic": "The History of Aviation"}}
+        exec_res = await client.post("/api/v1/runtime/execute", json=exec_req, headers=headers)
         assert exec_res.status_code == 200
         assert exec_res.json()["status"] == "completed"

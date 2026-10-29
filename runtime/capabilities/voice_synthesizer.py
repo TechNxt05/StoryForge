@@ -1,11 +1,8 @@
 """Voice & Audio Synthesis Capability for StoryForge Runtime."""
 
-import random
 import uuid
 from typing import Any, Dict, List
-from urllib.parse import quote
 from ..interfaces import IArtifact, ICapability
-from providers.voiceai import VoiceAIAdapter
 
 
 class VoiceoverArtifact(IArtifact):
@@ -42,10 +39,7 @@ class VoiceoverArtifact(IArtifact):
 
 
 class VoiceSynthesizerCapability(ICapability):
-    """Capability orchestrating TTS voice synthesis with automatic fallback."""
-
-    def __init__(self) -> None:
-        self.voiceai_adapter = VoiceAIAdapter()
+    """Synthesizes narration with the free TTS chain in runtime.media (edge-tts -> gTTS -> silence)."""
 
     @property
     def name(self) -> str:
@@ -54,48 +48,34 @@ class VoiceSynthesizerCapability(ICapability):
     async def execute(
         self,
         audio_jobs: List[Dict[str, Any]] | None = None,
-        provider: str = "voiceai",
-        backup_providers: List[str] | None = None,
-        voice_id: str = "en-US-Neural",
-        sample_rate: int = 24000,
+        voice_id: str = "",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Execute TTS voice synthesis jobs with automatic provider fallback."""
+        """Synthesize one audio clip per job and publish it."""
+        from .. import media
+
         artifact_id = f"audart-{uuid.uuid4().hex[:8]}"
-
-        if not backup_providers:
-            backup_providers = ["voiceai", "kokoro", "voicebox"]
-
+        voice_id = voice_id if voice_id in media.VOICES else media.DEFAULT_VOICE
         if not audio_jobs:
-            audio_jobs = [
-                {"job_id": "aud-s1", "scene_number": 1, "text": "Welcome to StoryForge AI automated video creation."}
-            ]
+            audio_jobs = [{"scene_number": 1, "text": "Welcome to StoryForge AI automated video creation."}]
 
+        out_dir = media.MEDIA_DIR / "capabilities" / artifact_id
         rendered_audio: List[Dict[str, Any]] = []
-        total_duration = 0.0
-
         for job in audio_jobs:
-            scene_num = job.get("scene_number", 1)
-            text = job.get("text", "Default narration text.")
-            word_count = len(text.split())
-            duration = round((word_count / 150) * 60, 2)
-            total_duration += duration
-            seed = random.randint(100000, 999999)
-
-            encoded_text = quote(text)
-            audio_url = f"https://api.voiceai.community/v1/synthesize?voice={voice_id}&text={encoded_text}&seed={seed}"
-
+            scene_num = job.get("scene_number", len(rendered_audio) + 1)
+            text = job.get("text") or "Default narration text."
+            voice = await media.synthesize_voice(text, voice_id, out_dir / f"scene_{scene_num}.mp3")
+            published = await media.publish_file(voice.path, "video")  # Cloudinary files audio under "video"
             rendered_audio.append(
                 {
                     "audio_id": f"aud-{uuid.uuid4().hex[:6]}",
                     "scene_number": scene_num,
-                    "provider": provider,
-                    "backup_providers_available": backup_providers,
+                    "provider": voice.provider,
                     "voice_id": voice_id,
                     "text": text,
-                    "url": audio_url,
-                    "duration_seconds": duration,
-                    "sample_rate": sample_rate,
+                    "url": published["url"],
+                    "duration_seconds": round(voice.duration, 2),
+                    "word_timestamps": [w.__dict__ for w in voice.words],
                     "format": "mp3",
                     "status": "completed",
                 }
@@ -104,8 +84,7 @@ class VoiceSynthesizerCapability(ICapability):
         artifact = VoiceoverArtifact(
             artifact_id=artifact_id,
             audio_clips=rendered_audio,
-            provider_used=provider,
-            total_audio_duration_seconds=round(total_duration, 2),
+            provider_used=", ".join(sorted({clip["provider"] for clip in rendered_audio})),
+            total_audio_duration_seconds=round(sum(c["duration_seconds"] for c in rendered_audio), 2),
         )
-
         return artifact.to_dict()

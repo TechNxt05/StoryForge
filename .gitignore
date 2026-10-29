@@ -65,3 +65,8 @@ coverage/
 .cy/
 .pytest_cache/
 .ruff_cache/
+
+# Local runtime data
+media/
+storyforge.db
+*.tsbuildinfo

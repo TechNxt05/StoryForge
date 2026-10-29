@@ -1,52 +1,59 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface EditorChatProps {
+  history: { role: "user" | "assistant"; text: string }[];
   onSendMessage: (message: string) => Promise<void>;
   isProcessing: boolean;
+  disabled: boolean;
+  error: string;
 }
 
-export default function EditorChat({ onSendMessage, isProcessing }: EditorChatProps) {
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string }[]>([
-    { role: "assistant", text: "I've generated your video timeline! What would you like to tweak? You can ask me to adjust brightness, change voiceovers, or add new media." },
-  ]);
+const SUGGESTIONS = ["Make the hook more dramatic", "Shorten every scene", "Add a call to action at the end", "Use simpler words for kids"];
+
+export default function EditorChat({ history, onSendMessage, isProcessing, disabled, error }: EditorChatProps) {
   const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isProcessing) return;
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [history.length, isProcessing]);
 
-    const userMsg = input.trim();
+  const send = async (text: string) => {
+    if (!text.trim() || isProcessing || disabled) return;
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", text: userMsg }]);
-
-    await onSendMessage(userMsg);
-
-    // After processing, add a generic assistant response (in real app, this comes from backend)
-    setMessages((prev) => [
-      ...prev,
-      { role: "assistant", text: "I've updated the timeline based on your request. Check the timeline editor above!" },
-    ]);
+    await onSendMessage(text.trim());
   };
 
   return (
-    <div className="flex flex-col h-[400px] bg-slate-900 rounded-xl border border-slate-800">
-      <div className="p-4 border-b border-slate-800 bg-slate-900/80 rounded-t-xl">
-        <h3 className="font-bold text-slate-200 text-sm flex items-center space-x-2">
-          <span>✨</span>
-          <span>StoryForge Assistant</span>
-        </h3>
+    <div className="flex flex-col h-[420px] bg-slate-900 rounded-2xl border border-slate-800">
+      <div className="p-4 border-b border-slate-800">
+        <h3 className="font-bold text-slate-200 text-sm">AI script editor</h3>
+        <p className="text-[11px] text-slate-500">Describe a change; the script updates, then re-render.</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, idx) => (
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {history.length === 0 && (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-400">Try:</p>
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => send(s)}
+                disabled={disabled || isProcessing}
+                className="block w-full text-left px-3 py-2 rounded-xl bg-slate-800/70 border border-slate-700 text-xs text-slate-300 hover:border-indigo-500/50 disabled:opacity-50"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+        {history.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                msg.role === "user"
-                  ? "bg-indigo-600 text-white rounded-br-none"
-                  : "bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700"
+              className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                msg.role === "user" ? "bg-indigo-600 text-white rounded-br-none" : "bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700"
               }`}
             >
               {msg.text}
@@ -55,36 +62,38 @@ export default function EditorChat({ onSendMessage, isProcessing }: EditorChatPr
         ))}
         {isProcessing && (
           <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm bg-slate-800 text-slate-400 rounded-bl-none border border-slate-700 flex space-x-2 items-center">
-              <span className="animate-bounce">●</span>
-              <span className="animate-bounce" style={{ animationDelay: "150ms" }}>●</span>
-              <span className="animate-bounce" style={{ animationDelay: "300ms" }}>●</span>
-            </div>
+            <div className="rounded-2xl px-4 py-2.5 text-xs bg-slate-800 text-slate-400 rounded-bl-none border border-slate-700">Rewriting the script…</div>
           </div>
         )}
+        {error && <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl p-2.5">{error}</div>}
+        <div ref={bottomRef} />
       </div>
 
-      <div className="p-3 border-t border-slate-800 bg-slate-900/50 rounded-b-xl">
-        <form onSubmit={handleSend} className="relative">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={isProcessing}
-            placeholder="Type 'Make the first video brighter'..."
-            className="w-full bg-slate-950 border border-slate-700 rounded-full py-3 pl-4 pr-12 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isProcessing}
-            className="absolute right-2 top-2 p-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:bg-slate-700 transition"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-              <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
-            </svg>
-          </button>
-        </form>
-      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(input);
+        }}
+        className="p-3 border-t border-slate-800 flex gap-2"
+      >
+        <input
+          type="text"
+          value={input}
+          maxLength={1000}
+          onChange={(e) => setInput(e.target.value)}
+          disabled={isProcessing || disabled}
+          placeholder={disabled ? "Available once the script exists" : "e.g. Make scene 2 about the Bible"}
+          aria-label="Instruction for the AI editor"
+          className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-full py-2.5 px-4 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+        />
+        <button
+          type="submit"
+          disabled={!input.trim() || isProcessing || disabled}
+          className="px-4 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-50 disabled:bg-slate-700"
+        >
+          Send
+        </button>
+      </form>
     </div>
   );
 }

@@ -13,7 +13,8 @@ async def test_deep_research_execution() -> None:
     assert result["topic"] == "Quantum Computing"
     assert len(result["facts"]) >= 3
     assert len(result["timeline_events"]) >= 3
-    assert result["confidence_score"] == 0.95
+    # No LLM in tests -> offline template research with lower confidence.
+    assert 0 < result["confidence_score"] <= 1
     assert result["artifact_type"] == "research_data"
 
 

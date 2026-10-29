@@ -14,16 +14,12 @@ from runtime.providers import ProviderFallbackEngine
 
 
 @pytest.mark.asyncio
-async def test_security_masked_api_keys() -> None:
-    """Verify secret API keys are never leaked in unmasked plain text."""
+async def test_security_settings_require_auth() -> None:
+    """Provider settings are private, and key writes are admin-only."""
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        res = await client.get("/api/v1/settings/keys")
-        assert res.status_code == 200
-        keys = res.json()
-        for key_name, masked_val in keys.items():
-            assert "sk-gemini-sample-key" not in masked_val
-            assert "sk-flux-sample-key" not in masked_val
-            assert "****" in masked_val or "..." in masked_val
+        assert (await client.get("/api/v1/settings/providers")).status_code == 401
+        res = await client.post("/api/v1/settings/keys", json={"env": "GEMINI_API_KEY", "value": "attacker-key"})
+        assert res.status_code == 401
 
 
 @pytest.mark.asyncio

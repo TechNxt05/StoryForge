@@ -34,8 +34,9 @@ async def test_video_rendering_execution() -> None:
     assert result["resolution"] == "1080x1920"
     assert result["duration_seconds"] == 10.0
     assert result["file_size_mb"] == 15.0
-    assert result["status"] == "completed"
-    assert "cdn.storyforge.ai" in result["output_url"]
+    # This planner only builds filtergraphs; real encoding lives in runtime.pipeline.
+    assert result["status"] == "planned"
+    assert result["output_url"] is None
 
 
 @pytest.mark.asyncio

@@ -1,90 +1,96 @@
-"""Platform Settings & Workspace Management API Router for StoryForge Gateway."""
+"""Platform settings: provider status, admin key management, workspace usage."""
 
 import os
-from typing import Any, Dict
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from ..auth import get_current_user
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from runtime import llm, media
+from ..auth import get_current_user, require_admin
+from ..database.postgres import Project as DBProject, Workspace as DBWorkspace, get_postgres_session
 
 router = APIRouter(prefix="/api/v1/settings", tags=["Settings & Workspace"])
 
-# In-memory key store with simple key masking & hashing
-_API_KEYS_DB: Dict[str, str] = {
-    "gemini": os.getenv("GEMINI_API_KEY", "sk-gemini-sample-key"),
-    "groq": os.getenv("GROQ_API_KEY", "sk-groq-sample-key"),
-    "openrouter": os.getenv("OPENROUTER_API_KEY", "sk-openrouter-sample-key"),
-}
+# Every provider the pipeline can use. All are free (or have a free tier).
+PROVIDERS: List[Dict[str, Any]] = [
+    {"id": "gemini", "category": "Script (LLM)", "name": "Google Gemini", "env": ["GEMINI_API_KEY"],
+     "free": "Free tier via Google AI Studio", "signup": "https://aistudio.google.com/apikey"},
+    {"id": "groq", "category": "Script (LLM)", "name": "Groq (gpt-oss-120b)", "env": ["GROQ_API_KEY"],
+     "free": "Free tier, ~1,000 requests/day", "signup": "https://console.groq.com/keys"},
+    {"id": "openrouter", "category": "Script (LLM)", "name": "OpenRouter free models", "env": ["OPENROUTER_API_KEY"],
+     "free": "50 free requests/day", "signup": "https://openrouter.ai/keys"},
+    {"id": "pollinations", "category": "Script + Images", "name": "Pollinations", "env": ["POLLINATIONS_API_KEY"],
+     "free": "Works without a key (slow: ~1 image/45s); free key removes limits", "signup": "https://enter.pollinations.ai",
+     "keyless": True},
+    {"id": "cloudflare", "category": "Images", "name": "Cloudflare Workers AI (FLUX schnell)",
+     "env": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"], "free": "10,000 free neurons/day",
+     "signup": "https://dash.cloudflare.com/profile/api-tokens"},
+    {"id": "huggingface", "category": "Images", "name": "Hugging Face (FLUX.1-schnell)", "env": ["HF_TOKEN"],
+     "free": "Small monthly free credit", "signup": "https://huggingface.co/settings/tokens"},
+    {"id": "edge-tts", "category": "Voice", "name": "Microsoft Edge neural voices", "env": [],
+     "free": "Free, no key needed", "keyless": True},
+    {"id": "cloudinary", "category": "Storage", "name": "Cloudinary",
+     "env": ["CLOUDINARY_URL"],
+     "free": "25 free credits/month - keeps videos after server restarts", "signup": "https://cloudinary.com/users/register_free"},
+]
+_ALLOWED_ENV = {env for p in PROVIDERS for env in p["env"]}
 
-_WORKSPACE_DB: Dict[str, Any] = {
-    "id": "ws-101",
-    "name": "Default Studio Workspace",
-    "tier": "pro_agency",
-    "monthly_renders_used": 42,
-    "monthly_renders_limit": 250,
-    "members": [
-        {"user_id": "usr-1", "name": "Admin Creator", "email": "admin@storyforge.ai", "role": "owner"},
-        {"user_id": "usr-2", "name": "Video Editor", "email": "editor@storyforge.ai", "role": "editor"},
-    ],
-}
+
+def _provider_status() -> List[Dict[str, Any]]:
+    out = []
+    for p in PROVIDERS:
+        if p["id"] == "cloudinary":
+            # Also accepts the three separate CLOUDINARY_* variables.
+            configured = media.cloudinary_configured()
+        else:
+            configured = bool(p["env"]) and all(os.getenv(e) for e in p["env"])
+        out.append({**p, "configured": configured, "active": configured or p.get("keyless", False)})
+    return out
+
+
+@router.get("/providers")
+async def get_providers(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """Which providers are configured on the server. Never returns key values."""
+    return {
+        "providers": _provider_status(),
+        "llm_order": llm.configured_providers(),
+        "storage": "cloudinary" if media.cloudinary_configured() else "local",
+        "can_edit": user["role"] == "admin",
+    }
 
 
 class APIKeyUpdateRequest(BaseModel):
-    provider: str = Field(..., example="gemini")
-    api_key: str = Field(..., example="sk-new-key-12345")
+    env: str = Field(..., examples=["GEMINI_API_KEY"])
+    value: str = Field(..., min_length=5, max_length=500)
 
 
-class WorkspaceMemberAddRequest(BaseModel):
-    name: str = Field(..., example="Jane Doe")
-    email: str = Field(..., example="jane@storyforge.ai")
-    role: str = Field(default="editor", example="editor")
-
-
-@router.get("/keys")
-async def get_api_keys(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, str]:
-    """Retrieve masked provider API keys."""
-    # Sync from env vars if updated
-    for provider in ["gemini", "groq", "openrouter", "flux", "veo", "cloudinary"]:
-        env_val = os.getenv(f"{provider.upper()}_API_KEY")
-        if env_val:
-            _API_KEYS_DB[provider] = env_val
-
-    return {k: f"{v[:4]}...{v[-4:]}" if len(v) > 8 else "****" for k, v in _API_KEYS_DB.items()}
-
-
-@router.post("/keys", status_code=status.HTTP_200_OK)
-async def update_api_key(
-    req: APIKeyUpdateRequest,
-    user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, str]:
-    """Save or update a provider API key securely in memory and active environment."""
-    if not req.api_key or len(req.api_key) < 5:
-        raise HTTPException(status_code=400, detail="Invalid API key format.")
-
-    provider_clean = req.provider.lower()
-    _API_KEYS_DB[provider_clean] = req.api_key
-    # Dynamically inject into active Python process environment
-    os.environ[f"{provider_clean.upper()}_API_KEY"] = req.api_key
-
-    return {"status": "success", "provider": req.provider, "message": "API key updated successfully in runtime process."}
+@router.post("/keys")
+async def update_api_key(req: APIKeyUpdateRequest, admin: Dict[str, Any] = Depends(require_admin)) -> Dict[str, str]:
+    """Admin-only: set a provider key for the running process (lost on restart - set it in your host's env too)."""
+    if req.env not in _ALLOWED_ENV:
+        raise HTTPException(status_code=400, detail="Unknown provider variable.")
+    os.environ[req.env] = req.value.strip()
+    return {"status": "success", "message": f"{req.env} applied until the next restart. Add it to your hosting environment to persist it."}
 
 
 @router.get("/workspace")
-async def get_workspace_details(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    """Retrieve workspace tier and member permissions."""
-    return _WORKSPACE_DB
-
-
-@router.post("/workspace/members", status_code=status.HTTP_201_CREATED)
-async def add_workspace_member(
-    req: WorkspaceMemberAddRequest,
+async def get_workspace_details(
     user: Dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_postgres_session),
 ) -> Dict[str, Any]:
-    """Add a new member to the workspace."""
-    new_member = {
-        "user_id": f"usr-{len(_WORKSPACE_DB['members'])+1}",
-        "name": req.name,
-        "email": req.email,
-        "role": req.role,
+    """The user's workspace with real usage counts."""
+    ws = (await db.execute(select(DBWorkspace).where(DBWorkspace.owner_id == user["user_id"]))).scalars().first()
+    counts = dict(
+        (await db.execute(
+            select(DBProject.status, func.count()).where(DBProject.creator_id == user["user_id"]).group_by(DBProject.status)
+        )).all()
+    )
+    return {
+        "id": ws.id if ws else None,
+        "name": ws.name if ws else "My Workspace",
+        "projects_total": sum(counts.values()),
+        "projects_by_status": counts,
     }
-    _WORKSPACE_DB["members"].append(new_member)
-    return {"status": "success", "member": new_member}

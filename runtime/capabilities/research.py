@@ -1,6 +1,5 @@
 """Deep Research & Topic Extraction Capability for StoryForge Runtime."""
 
-import os
 import uuid
 from typing import Any, Dict, List
 from ..interfaces import IArtifact, ICapability
@@ -53,33 +52,20 @@ class DeepResearchCapability(ICapability):
         return "deep_research"
 
     async def _call_gemini(self, topic: str, content_pack: str) -> str | None:
-        """Attempt to get real research from Gemini API."""
-        import httpx
+        """Ask the first available free LLM (see runtime.llm) for structured research."""
+        from .. import llm
 
-        api_key = os.getenv("GEMINI_API_KEY", "")
-        if not api_key:
-            return None
-
+        prompt = (
+            f"You are a research expert. Provide 5 concise, factual bullet points about '{topic}' "
+            f"in the context of {content_pack}. Also provide 3 key timeline events and 3 key entities. "
+            f"Format as JSON with keys: facts (list of strings), timeline_events (list of {{year, event}}), key_entities (list of strings)."
+        )
         try:
-            prompt = (
-                f"You are a research expert. Provide 5 concise, factual bullet points about '{topic}' "
-                f"in the context of {content_pack}. Also provide 3 key timeline events and 3 key entities. "
-                f"Format as JSON with keys: facts (list of strings), timeline_events (list of {{year, event}}), key_entities (list of strings)."
-            )
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.4},
-            }
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception as e:
-            print(f"[DeepResearch] Gemini API call failed: {e}")
-
-        return None
+            result = await llm.complete(prompt, system="You are a careful research assistant.", json_mode=True, temperature=0.4)
+            return result.text
+        except llm.LLMUnavailableError as e:
+            print(f"[DeepResearch] No LLM available: {e}")
+            return None
 
     async def execute(self, topic: str = "", content_pack: str = "general", **kwargs: Any) -> Dict[str, Any]:
         """Perform deep topic research and return structured findings."""

@@ -2,70 +2,83 @@
 
 import React from "react";
 import Link from "next/link";
+import { mediaUrl, ProjectSummary } from "../lib/api";
 
-interface Project {
-  id: string;
-  title: string;
-  topic: string;
-  content_pack_name: string;
-  aspect_ratio?: string;
-  status: string;
-  created_at: string;
-}
+const STATUS_STYLES: Record<ProjectSummary["status"], { dot: string; text: string; label: string }> = {
+  draft: { dot: "bg-slate-400", text: "text-slate-300", label: "Draft" },
+  queued: { dot: "bg-amber-400 animate-pulse", text: "text-amber-300", label: "Queued" },
+  generating: { dot: "bg-indigo-400 animate-pulse", text: "text-indigo-300", label: "Generating" },
+  completed: { dot: "bg-emerald-400", text: "text-emerald-300", label: "Ready" },
+  failed: { dot: "bg-rose-400", text: "text-rose-300", label: "Failed" },
+};
 
-interface ProjectGridProps {
-  projects: Project[];
-}
-
-export default function ProjectGrid({ projects }: ProjectGridProps) {
+export default function ProjectGrid({ projects, onCreate }: { projects: ProjectSummary[]; onCreate: () => void }) {
   if (projects.length === 0) {
     return (
       <div className="glass-card rounded-2xl p-12 text-center border border-slate-800">
-        <div className="h-12 w-12 rounded-2xl bg-indigo-500/20 text-indigo-400 mx-auto flex items-center justify-center font-bold text-xl mb-4">
-          🎬
-        </div>
-        <h3 className="text-lg font-bold text-slate-200">No Story Projects Yet</h3>
-        <p className="text-sm text-slate-400 max-w-sm mx-auto mt-1">
-          Click &quot;New Story Project&quot; above to initialize your autonomous multi-agent video pipeline.
+        <h3 className="text-lg font-bold text-slate-200">No projects yet</h3>
+        <p className="text-sm text-slate-400 max-w-sm mx-auto mt-1 mb-5">
+          Create your first video — pick a topic and StoryForge does the rest in a few minutes.
         </p>
+        <button onClick={onCreate} className="gradient-button px-5 py-2.5 rounded-xl text-sm font-bold text-white">
+          + New video
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {projects.map((project) => (
-        <div key={project.id} className="glass-card rounded-2xl p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-[11px] font-semibold uppercase tracking-wider">
-                {project.content_pack_name || "general"}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {projects.map((project) => {
+        const status = STATUS_STYLES[project.status] || STATUS_STYLES.draft;
+        const active = project.status === "queued" || project.status === "generating";
+        return (
+          <Link
+            key={project.id}
+            href={`/studio/${project.id}`}
+            className="glass-card rounded-2xl overflow-hidden flex flex-col border border-slate-800 hover:border-indigo-500/50 transition group"
+          >
+            <div className="relative aspect-video bg-slate-950 overflow-hidden">
+              {project.thumbnail_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={mediaUrl(project.thumbnail_url)}
+                  alt=""
+                  loading="lazy"
+                  className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition duration-500"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-indigo-900/40 via-slate-900 to-purple-900/30" />
+              )}
+              <span className="absolute top-3 left-3 px-2 py-0.5 rounded-full bg-black/60 text-indigo-200 text-[10px] font-semibold uppercase tracking-wider">
+                {project.content_pack_name}
               </span>
-              <span className="text-[11px] font-medium text-slate-400">
-                {project.aspect_ratio || "9:16"}
+              <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-black/60 text-slate-200 text-[10px] font-semibold">
+                {project.aspect_ratio}
+                {project.video ? ` · ${Math.round(project.video.duration)}s` : ""}
               </span>
+              {active && (
+                <div className="absolute bottom-0 inset-x-0 h-1 bg-slate-900">
+                  <div className="h-full gradient-button transition-all duration-700" style={{ width: `${Math.max(5, project.progress)}%` }} />
+                </div>
+              )}
             </div>
 
-            <h3 className="font-bold text-lg text-white mb-1 line-clamp-1">{project.title}</h3>
-            <p className="text-slate-400 text-xs line-clamp-2 mb-4">{project.topic}</p>
-          </div>
-
-          <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <span className={`h-2 w-2 rounded-full ${project.status === 'completed' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`}></span>
-              <span className={`text-xs font-semibold capitalize ${project.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'}`}>{project.status}</span>
+            <div className="p-5 flex-1 flex flex-col">
+              <h3 className="font-bold text-base text-white mb-1 line-clamp-1">{project.title}</h3>
+              <p className="text-slate-400 text-xs line-clamp-2 mb-4 flex-1">{project.topic}</p>
+              <div className="flex items-center justify-between text-xs">
+                <span className={`flex items-center gap-2 font-semibold ${status.text}`}>
+                  <span className={`h-2 w-2 rounded-full ${status.dot}`} />
+                  {status.label}
+                  {active && ` · ${project.progress}%`}
+                </span>
+                <span className="text-indigo-300 font-semibold">Open →</span>
+              </div>
             </div>
-
-            <Link
-              href={`/studio/${project.id}`}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition flex items-center space-x-1"
-            >
-              <span>Open Studio</span>
-              <span>&rarr;</span>
-            </Link>
-          </div>
-        </div>
-      ))}
+          </Link>
+        );
+      })}
     </div>
   );
 }

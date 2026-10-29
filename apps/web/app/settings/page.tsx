@@ -1,186 +1,131 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { getApiKeys, updateApiKey, getWorkspace } from "../../lib/api";
+import React, { useCallback, useEffect, useState } from "react";
+import { getProviders, getStoredUser, ProviderStatus, setProviderKey, User } from "../../lib/api";
+import { useRequireAuth } from "../../lib/useRequireAuth";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"keys" | "workspace" | "preferences">("keys");
-  const [provider, setProvider] = useState("gemini");
-  const [apiKey, setApiKey] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [savedStatus, setSavedStatus] = useState("");
-  const [keysList, setKeysList] = useState<Record<string, string>>({});
-  const [workspace, setWorkspace] = useState<any>(null);
+  const ready = useRequireAuth();
+  const [providers, setProviders] = useState<ProviderStatus[]>([]);
+  const [llmOrder, setLlmOrder] = useState<string[]>([]);
+  const [storage, setStorage] = useState("");
+  const [canEdit, setCanEdit] = useState(false);
+  const [error, setError] = useState("");
+  const [user, setUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    async function loadSettings() {
-      try {
-        const [keysData, wsData] = await Promise.all([getApiKeys(), getWorkspace()]);
-        if (keysData) setKeysList(keysData);
-        if (wsData) setWorkspace(wsData);
-      } catch (err) {
-        console.warn("Could not load live settings, using local view:", err);
-      }
-    }
-    loadSettings();
+  const load = useCallback(() => {
+    getProviders()
+      .then((res) => {
+        setProviders(res.providers);
+        setLlmOrder(res.llm_order);
+        setStorage(res.storage);
+        setCanEdit(res.can_edit);
+      })
+      .catch((err) => setError(err.message));
   }, []);
 
-  const handleSaveKey = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!ready) return;
+    setUser(getStoredUser());
+    load();
+  }, [ready, load]);
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div className="pb-4 border-b border-slate-800">
+        <h1 className="text-2xl font-extrabold text-white">Settings</h1>
+        {user && <p className="text-xs text-slate-400 mt-1">Signed in as {user.full_name} ({user.email})</p>}
+      </div>
+
+      {error && <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">{error}</div>}
+
+      <div className="glass-card rounded-2xl p-5 border border-slate-800 space-y-2 text-xs text-slate-300">
+        <h2 className="font-bold text-sm text-white">How generation is powered</h2>
+        <p>
+          Script writers are tried in order: <span className="font-mono text-indigo-300">{llmOrder.join(" → ") || "—"}</span>. Videos are stored on{" "}
+          <span className="font-mono text-indigo-300">{storage === "cloudinary" ? "Cloudinary (permanent)" : "the API server (lost when a free server restarts)"}</span>.
+        </p>
+        <p className="text-slate-400">
+          Everything works with zero keys, but free keys make it faster and better. Keys are configured as environment variables on the API server
+          (e.g. in the Render dashboard) and are never shown here.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {providers.map((p) => (
+          <ProviderCard key={p.id} provider={p} canEdit={canEdit} onSaved={load} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProviderCard({ provider, canEdit, onSaved }: { provider: ProviderStatus; canEdit: boolean; onSaved: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const status = provider.configured
+    ? { text: "Configured", cls: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30" }
+    : provider.active
+      ? { text: "Active (no key)", cls: "bg-sky-500/10 text-sky-300 border-sky-500/30" }
+      : { text: "Not configured", cls: "bg-slate-800 text-slate-400 border-slate-700" };
+
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey) return;
-
-    setLoading(true);
-    setSavedStatus("");
-
+    setSaving(true);
+    setMsg("");
     try {
-      await updateApiKey(provider, apiKey);
-      setSavedStatus(`Saved key for ${provider.toUpperCase()} to API Gateway!`);
-      setKeysList((prev) => ({ ...prev, [provider]: `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` }));
-      setApiKey("");
-    } catch (err: any) {
-      setSavedStatus(`Saved ${provider.toUpperCase()} key locally.`);
+      for (const [env, value] of Object.entries(values)) {
+        if (value.trim()) await setProviderKey(env, value.trim());
+      }
+      setValues({});
+      setMsg("Applied until the next server restart. Add it to the host's environment to keep it.");
+      onSaved();
+    } catch (err) {
+      setMsg((err as Error).message);
     } finally {
-      setLoading(false);
-      setTimeout(() => setSavedStatus(""), 4000);
+      setSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="pb-4 border-b border-slate-800">
-        <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Control Panel</span>
-        <h1 className="text-2xl font-extrabold text-white mt-0.5">Platform Settings & Workspace</h1>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex space-x-2 border-b border-slate-800 pb-2">
-        <button
-          onClick={() => setActiveTab("keys")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === "keys" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          API Keys & Providers
-        </button>
-        <button
-          onClick={() => setActiveTab("workspace")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-            activeTab === "workspace" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Workspace & Team
-        </button>
-      </div>
-
-      {/* Tab 1: API Keys */}
-      {activeTab === "keys" && (
-        <div className="glass-card rounded-2xl p-6 border border-slate-800 max-w-2xl space-y-6">
-          <div>
-            <h3 className="font-bold text-base text-white">Provider API Keys</h3>
-            <p className="text-xs text-slate-400 mt-1">Configure your generative AI provider keys for failover execution.</p>
-          </div>
-
-          {Object.keys(keysList).length > 0 && (
-            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Configured Keys</h4>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                {Object.entries(keysList).map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800">
-                    <span className="text-indigo-400 uppercase">{k}</span>
-                    <span className="text-slate-400">{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleSaveKey} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                AI Provider
-              </label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none"
-              >
-                <option value="gemini">Google Gemini / Veo</option>
-                <option value="groq">Groq Llama-3.3-70b (Free)</option>
-                <option value="openrouter">OpenRouter Multi-LLM (Free)</option>
-                <option value="flux">Black Forest Labs (FLUX.1)</option>
-                <option value="kokoro">Kokoro TTS Engine</option>
-                <option value="cloudinary">Cloudinary CDN</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                API Secret Key
-              </label>
-              <input
-                type="password"
-                required
-                placeholder="sk-..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="gradient-button px-5 py-2 rounded-xl text-xs font-bold text-white shadow-lg disabled:opacity-50"
-              >
-                {loading ? "Saving..." : "Save API Key"}
-              </button>
-
-              {savedStatus && (
-                <span className="text-xs font-semibold text-emerald-400">{savedStatus}</span>
-              )}
-            </div>
-          </form>
+    <div className="glass-card rounded-2xl p-5 border border-slate-800 flex flex-col">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{provider.category}</p>
+          <h3 className="font-bold text-sm text-white">{provider.name}</h3>
         </div>
+        <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold whitespace-nowrap ${status.cls}`}>{status.text}</span>
+      </div>
+      <p className="text-xs text-slate-400 flex-1">{provider.free}</p>
+      {provider.env.length > 0 && (
+        <p className="text-[11px] text-slate-500 font-mono mt-2 break-all">{provider.env.join(", ")}</p>
       )}
-
-      {/* Tab 2: Workspace */}
-      {activeTab === "workspace" && (
-        <div className="glass-card rounded-2xl p-6 border border-slate-800 max-w-2xl space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-base text-white">{workspace?.name || "Default Studio Workspace"}</h3>
-              <p className="text-xs text-slate-400">
-                Pro Agency Plan &bull; {workspace?.monthly_renders_used || 42}/{workspace?.monthly_renders_limit || 250} Renders Used This Month
-              </p>
-            </div>
-            <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-bold">
-              PRO TIER
-            </span>
-          </div>
-
-          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-            <div className="bg-indigo-500 h-full w-[17%]"></div>
-          </div>
-
-          <div>
-            <h4 className="font-bold text-xs text-slate-300 uppercase tracking-wider mb-3">Team Members</h4>
-            <div className="space-y-2">
-              {(workspace?.members || [
-                { user_id: "usr-1", name: "Admin Creator", email: "admin@storyforge.ai", role: "owner" }
-              ]).map((m: any) => (
-                <div key={m.user_id} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-bold text-white">{m.name}</span>
-                    <span className="text-slate-400 block">{m.email}</span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold uppercase text-[10px]">{m.role}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {provider.signup && (
+        <a href={provider.signup} target="_blank" rel="noreferrer" className="text-xs text-indigo-300 hover:underline mt-2 font-semibold">
+          Get a free key ↗
+        </a>
+      )}
+      {canEdit && provider.env.length > 0 && (
+        <form onSubmit={save} className="mt-3 pt-3 border-t border-slate-800 space-y-2">
+          {provider.env.map((env) => (
+            <input
+              key={env}
+              type="password"
+              autoComplete="off"
+              placeholder={env}
+              aria-label={env}
+              value={values[env] || ""}
+              onChange={(e) => setValues({ ...values, [env]: e.target.value })}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+            />
+          ))}
+          <button type="submit" disabled={saving} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-semibold text-white disabled:opacity-50">
+            {saving ? "Saving…" : "Apply (admin)"}
+          </button>
+          {msg && <p className="text-[11px] text-slate-400">{msg}</p>}
+        </form>
       )}
     </div>
   );

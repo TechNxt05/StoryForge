@@ -25,11 +25,17 @@ async def test_pollinations_adapter() -> None:
 
 
 @pytest.mark.asyncio
-async def test_groq_adapter() -> None:
-    adapter = GroqAdapter()
-    res = await adapter.invoke(prompt="Explain quantum entanglement")
+async def test_groq_adapter(monkeypatch) -> None:
+    from runtime import llm
+
+    async def fake_complete(prompt, **kwargs):
+        assert kwargs["only"] == ["groq"]
+        return llm.LLMResult(text="entangled", provider="groq", model="openai/gpt-oss-120b")
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+    res = await GroqAdapter().invoke(prompt="Explain quantum entanglement")
     assert res["provider"] == "groq"
-    assert "Groq" in res["response"]
+    assert res["text"] == "entangled"
 
 
 @pytest.mark.asyncio

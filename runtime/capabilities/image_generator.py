@@ -3,7 +3,6 @@
 import random
 import uuid
 from typing import Any, Dict, List
-from urllib.parse import quote
 from ..interfaces import IArtifact, ICapability
 
 
@@ -41,7 +40,7 @@ class ImageAssetsArtifact(IArtifact):
 
 
 class ImageGenerationPipelineCapability(ICapability):
-    """Capability orchestrating Pollinations free API and Cloudinary CDN for keyframe image synthesis."""
+    """Generates keyframe images with the free provider chain in runtime.media."""
 
     @property
     def name(self) -> str:
@@ -50,44 +49,32 @@ class ImageGenerationPipelineCapability(ICapability):
     async def execute(
         self,
         image_jobs: List[Dict[str, Any]] | None = None,
-        provider: str = "pollinations",
         aspect_ratio: str = "9:16",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Execute keyframe image generation jobs using Pollinations (free, no API key)."""
+        """Generate one image per job and publish it (Cloudinary or local /media)."""
+        from .. import media
+
         artifact_id = f"imgart-{uuid.uuid4().hex[:8]}"
-
         if not image_jobs:
-            image_jobs = [
-                {"job_id": "img-s1", "frame_id": "frame-s1", "prompt": "Cinematic glowing neural network particles"}
-            ]
+            image_jobs = [{"frame_id": "frame-s1", "prompt": "Cinematic glowing neural network particles"}]
 
-        # Determine dimensions from aspect ratio
-        if aspect_ratio == "9:16":
-            width, height = 1080, 1920
-        elif aspect_ratio == "16:9":
-            width, height = 1920, 1080
-        else:
-            width, height = 1080, 1080
-
+        width, height = media.dimensions(aspect_ratio)
+        out_dir = media.MEDIA_DIR / "capabilities" / artifact_id
         rendered_images: List[Dict[str, Any]] = []
-
         for job in image_jobs:
-            frame_id = job.get("frame_id", "frame-1")
+            frame_id = job.get("frame_id", f"frame-{len(rendered_images) + 1}")
             prompt = job.get("prompt", "Default scene visual prompt")
-            seed = random.randint(100000, 999999)
-
-            # Pollinations.ai provides free image generation — URL returns a real image
-            encoded_prompt = quote(f"{prompt}, cinematic, 4k, professional lighting, documentary style")
-            image_url = f"https://pollinations.ai/p/{encoded_prompt}?width={width}&height={height}&seed={seed}&nologo=true"
-
+            seed = random.randint(1, 2_000_000_000)
+            image = await media.generate_image(prompt, aspect_ratio, seed, out_dir / f"{frame_id}.jpg")
+            published = await media.publish_file(image.path, "image")
             rendered_images.append(
                 {
                     "image_id": f"img-{uuid.uuid4().hex[:6]}",
                     "frame_id": frame_id,
-                    "provider": "pollinations",
+                    "provider": image.provider,
                     "prompt": prompt,
-                    "url": image_url,
+                    "url": published["url"],
                     "seed": seed,
                     "aspect_ratio": aspect_ratio,
                     "width": width,
@@ -99,8 +86,7 @@ class ImageGenerationPipelineCapability(ICapability):
         artifact = ImageAssetsArtifact(
             artifact_id=artifact_id,
             images=rendered_images,
-            provider_used="pollinations",
+            provider_used=", ".join(sorted({img["provider"] for img in rendered_images})),
             total_images_generated=len(rendered_images),
         )
-
         return artifact.to_dict()

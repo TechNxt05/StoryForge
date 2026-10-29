@@ -1,116 +1,96 @@
 # StoryForge AI
 
-> **AI Agentic Storytelling Platform Monorepo**
+Type a topic → get a narrated, captioned short video (MP4). StoryForge researches the topic on
+Wikipedia, writes a scene-by-scene script with an LLM, generates an image for every scene,
+narrates it with a neural voice, and renders a Ken Burns-style video with burned-in captions.
 
-StoryForge is a production-grade AI platform designed to automate documentary-quality short-form video creation—from raw topic research and scriptwriting to voice synthesis, image/video generation, and video composition.
+Everything runs on **free** services and works with **zero API keys** — free keys just make it
+faster and better.
 
----
-
-## 🌟 StoryForge Architecture
-
-StoryForge is architected as an extensible, multi-tenant monorepo decoupling runtime engine interfaces from UI, backend services, worker pipelines, and third-party AI provider adapters.
+## How it works
 
 ```
-StoryForge/
-├── apps/
-│   ├── web/           (Next.js 15, React 19, TailwindCSS v4, Zustand, TanStack Query)
-│   ├── api/           (FastAPI, Python 3.12, Pydantic v2)
-│   ├── worker/        (Celery / Background Async Processing Engine)
-│   └── docs/          (Platform Documentation Hub)
-├── runtime/           (Core AI Orchestration Engine & Abstract Interfaces)
-│   ├── planner/       (Agent Planning & Reasoning Interfaces)
-│   ├── execution/     (Workflow Execution Engine)
-│   ├── gateway/       (Runtime API & Protocol Gateway)
-│   ├── memory/        (Episodic & Vector Memory Interfaces)
-│   ├── scheduler/     (Task Scheduling & Queue Management)
-│   ├── registry/      (Capability & Agent Registries)
-│   ├── events/        (Event Bus & Pub/Sub Specs)
-│   ├── sdk/           (Developer SDK Contract)
-│   └── shared/        (Runtime Utilities & Base Types)
-├── packages/          (Shared TypeScript & Python Packages)
-│   ├── ui/            (Design System & Core UI Components)
-│   ├── database/      (ORM, Schemas & Connections)
-│   ├── types/         (TypeScript Types & Contracts)
-│   ├── config/        (Shared Constants & Configuration)
-│   ├── auth/          (Authentication & Authorization)
-│   ├── media/         (Media Assembly & Processing Helpers)
-│   ├── observability/ (Tracing, Metrics & Structured Logging)
-│   ├── utils/         (Utility Functions)
-│   └── ai/            (Prompt Templates & Common AI Schemas)
-├── providers/         (Provider Adapter Skeletons)
-│   ├── openrouter/    (LLM Gateway Adapter)
-│   ├── gemini/        (Google Gemini Adapter)
-│   ├── veo/           (Google Veo Video Gen Adapter)
-│   ├── flux/          (FLUX Image Gen Adapter)
-│   ├── nanobanana/    (NanoBanana Adapter)
-│   ├── kokoro/        (Kokoro TTS Adapter)
-│   ├── voicebox/      (VoiceBox Audio Adapter)
-│   └── cloudinary/    (Cloudinary Storage Adapter)
-├── content-packs/     (Domain-Specific Content Kits)
-│   ├── cricket/
-│   ├── travel/
-│   ├── history/
-│   ├── technology/
-│   └── chess/
-├── docker/            (Multi-stage Dockerfiles & Compose Specs)
-├── scripts/           (Dev, Build, Test & Lint Executables)
-└── tests/             (Unit, Integration & End-to-End Test Suites)
+Next.js (Vercel)  ──REST──►  FastAPI (Render, Docker)
+  Studio UI                    ├─ auth (JWT, PBKDF2)            apps/api/src/auth.py
+  polls job progress           ├─ projects / jobs / chat edits   apps/api/src/routes/, jobs.py
+                               └─ pipeline (asyncio background)  runtime/pipeline.py
+                                   1. research   Wikipedia API (free, no key)
+                                   2. script     runtime/llm.py: Gemini → Groq → OpenRouter → Pollinations
+                                   3. images     runtime/media.py: Cloudflare FLUX → HF FLUX → Pollinations → local card
+                                   4. voice      edge-tts neural voices → gTTS → silence (with word timings)
+                                   5. render     ffmpeg: pan/zoom per scene + ASS captions, concat
+                                   6. publish    Cloudinary (if configured) or /media on the API
+Postgres (Neon/Supabase free) or SQLite stores users, projects and progress.
 ```
 
----
+Every step has a fallback, so a run always ends in a playable MP4. The Studio shows which
+provider handled each step.
 
-## 🛠 Tech Stack
+## Free providers
 
-- **Frontend**: Next.js 15, React 19, TypeScript, TailwindCSS v4, shadcn/ui, Zustand, TanStack Query
-- **Backend & Workers**: FastAPI, Python 3.12, `uv`, Pydantic v2, Celery / Asyncio
-- **Infrastructure & Containerization**: Docker, Docker Compose, Turborepo, pnpm
-- **Databases & Vector Search**: PostgreSQL, MongoDB, Redis, Qdrant
-- **Storage**: Cloudinary / S3 Compatible Object Storage
+| Purpose | Provider | Key | Notes |
+|---|---|---|---|
+| Script | Google Gemini (`gemini-2.5-flash`) | `GEMINI_API_KEY` | Best quality; free tier at [AI Studio](https://aistudio.google.com/apikey) |
+| Script | Groq (`openai/gpt-oss-120b`) | `GROQ_API_KEY` | Very fast; [console.groq.com](https://console.groq.com/keys) |
+| Script | OpenRouter (`openrouter/free`) | `OPENROUTER_API_KEY` | ~50 free requests/day |
+| Script + images | Pollinations | none (optional `POLLINATIONS_API_KEY`) | Anonymous: ~1 image per 45 s per IP, small watermark |
+| Images | Cloudflare Workers AI FLUX schnell | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | 10k free neurons/day — fastest free image option |
+| Images | Hugging Face FLUX.1-schnell | `HF_TOKEN` | Small monthly free credit |
+| Voice | Microsoft Edge neural voices (edge-tts) | none | Natural voices, word timings for captions |
+| Storage | Cloudinary | `CLOUDINARY_URL` | Keeps videos after restarts (recommended) |
 
----
+All model names are overridable (`GEMINI_MODEL`, `GROQ_MODEL`, …) because free rosters change.
+See [.env.example](.env.example) for every setting.
 
-## 🚀 Development Quickstart
+## Run locally
 
-### Prerequisites
-- Node.js >= 20.0.0
-- `pnpm` >= 9.0.0
-- Python >= 3.12 & `uv` package manager
-- Docker & Docker Compose
-
-### Commands
+Requirements: Python 3.11+, Node 20+. ffmpeg is optional (the `imageio-ffmpeg` package bundles one).
 
 ```bash
-# Install Node dependencies across workspace
-pnpm install
+# API
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+JWT_SECRET_KEY=dev uvicorn apps.api.src.main:app --reload --port 8000
 
-# Run dev environment across all apps
-./scripts/dev.sh
-
-# Run linting across repository
-./scripts/lint.sh
-
-# Run type checks across web & Python services
-./scripts/build.sh
-
-# Execute unit and integration tests
-./scripts/test.sh
+# Web (new terminal)
+cd apps/web
+npm install
+echo NEXT_PUBLIC_API_URL=http://localhost:8000 > .env.local
+npm run dev                                        # http://localhost:3000
 ```
 
----
+Tests (offline, real ffmpeg render): `pip install pytest pytest-asyncio && python -m pytest tests -q`
 
-## 🗺 Platform Roadmap
+## Deploy for free
 
-- [x] **P00: Monorepo Foundation & Architecture Initialization**
-- [ ] **P01: Authentication & User Management Systems**
-- [ ] **P02: Core Database Architecture & Migrations**
-- [ ] **P03: Runtime Engine & Execution Bus**
-- [ ] **P04: AI Provider Adapters Implementation**
-- [ ] **P05: Content Pack Orchestration Engine**
-- [ ] **P06: Web Studio & Interactive Canvas UI**
-- [ ] **P07: Automated Media Rendering & Composition Pipeline**
+### API on Render
+1. New → **Web Service** → connect the repo → Runtime **Docker** (uses the root `Dockerfile`) → Instance type **Free**.
+2. Environment variables:
+   - `JWT_SECRET_KEY` — a long random string (required)
+   - `DATABASE_URL` — a free [Neon](https://neon.tech) Postgres URL. Without it, SQLite is used and **all accounts are wiped on every restart**.
+   - `CORS_ORIGINS` — your Vercel URL, e.g. `https://storyforge.vercel.app`
+   - `ADMIN_EMAILS` — your email (lets you set keys from the Settings page)
+   - Any free AI keys from the table above, and Cloudinary keys.
+3. Note the service URL, e.g. `https://storyforge-api.onrender.com`.
 
----
+### Web on Vercel
+1. Import the repo, set **Root Directory** to `apps/web`.
+2. Environment variable `NEXT_PUBLIC_API_URL` = your Render URL. Deploy.
 
-## 📄 License
+### Free-tier realities
+- Render free instances **sleep after 15 min idle**; the first request takes ~30–60 s (the header shows "Waking server…").
+  A generation in progress is lost if the instance restarts — the project is marked failed and can be re-run.
+- Render free has ~0.1 CPU: a 45 s video renders in roughly 1–3 minutes at the default 576p (`RENDER_SHORT_SIDE`).
+- Without Cloudinary, videos are stored on the instance disk and vanish on restart.
+- Without image keys, Pollinations' anonymous limit means ~45 s per scene image.
 
-StoryForge is proprietary software. All rights reserved.
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `apps/web` | Next.js 15 studio (projects, studio editor, assets, analytics, settings) |
+| `apps/api` | FastAPI app: auth, projects, background jobs, settings, assets |
+| `runtime/llm.py`, `media.py`, `pipeline.py` | The generation pipeline used by the API |
+| `runtime/capabilities`, `planner`, `scheduler`, … | Earlier "agent runtime" experiments exposed under `/api/v1/runtime`; most are simulated and not used by the product |
+| `providers/` | Provider adapters (Gemini/Groq/OpenRouter delegate to `runtime/llm.py`; others are stubs) |
+| `tests/` | pytest suite (runs offline) |

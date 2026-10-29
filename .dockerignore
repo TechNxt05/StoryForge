@@ -12,3 +12,7 @@ __pycache__/
 README.md
 docs/
 tests/
+media/
+storyforge.db
+apps/web/
+packages/

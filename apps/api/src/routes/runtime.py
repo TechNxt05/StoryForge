@@ -1,7 +1,7 @@
 """Runtime Engine Gateway Router for StoryForge."""
 
 from typing import Any, Dict
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from ..schemas import (
     CapabilityExecuteRequest,
     PlanGenerateRequest,
@@ -10,12 +10,14 @@ from ..schemas import (
     TaskStatusResponse,
 )
 
+from ..auth import get_current_user
 from runtime.planner import AgentPlannerEngine
 from runtime.scheduler import TaskQueueManager
 from runtime.registry.store import CapabilityRegistry
 from runtime.execution import ExecutionRunner
 
-router = APIRouter(prefix="/api/v1/runtime", tags=["Runtime Engine"])
+# Capabilities can call paid/rate-limited services, so require a signed-in user.
+router = APIRouter(prefix="/api/v1/runtime", tags=["Runtime Engine"], dependencies=[Depends(get_current_user)])
 
 planner_engine = AgentPlannerEngine()
 queue_manager = TaskQueueManager()
@@ -51,8 +53,9 @@ async def execute_capability(req: CapabilityExecuteRequest) -> Dict[str, Any]:
         task = await queue_manager.enqueue(job_name=req.capability_name, payload=req.kwargs)
         return {"status": "enqueued", "task_id": task.task_id}
     else:
-        cap = CapabilityRegistry.get_capability(req.capability_name)
-        if not cap:
+        try:
+            cap = CapabilityRegistry.get_capability(req.capability_name)
+        except KeyError:
             raise HTTPException(status_code=404, detail=f"Capability '{req.capability_name}' not registered.")
 
         step_result = await runner.execute_capability(step_id="step-api", capability=cap, kwargs=req.kwargs)

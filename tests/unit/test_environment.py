@@ -2,6 +2,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def test_python_version() -> None:
     """Verify system is running on Python >= 3.11."""
@@ -21,8 +23,6 @@ def test_workspace_structure() -> None:
         "content-packs",
         "docker",
         "scripts",
-        "Documents",
-        "EngineeringKit",
     ]
     for rel_dir in required_dirs:
         dir_path = root_dir / rel_dir
@@ -30,8 +30,10 @@ def test_workspace_structure() -> None:
 
 
 def test_engineering_kit_files() -> None:
-    """Verify EngineeringKit handbook documents exist."""
+    """Verify EngineeringKit handbook documents exist (the folder is gitignored, so only checked locally)."""
     root_dir = Path(__file__).parent.parent.parent
+    if not (root_dir / "EngineeringKit").is_dir():
+        pytest.skip("EngineeringKit/ is gitignored and not present in this checkout")
     required_handbook_files = [
         "EngineeringKit/MASTER_PROMPT.md",
         "EngineeringKit/AI_AGENT_RULEBOOK.md",

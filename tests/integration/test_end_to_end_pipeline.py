@@ -7,7 +7,7 @@ from apps.worker.src import FFmpegVideoRenderer
 
 
 @pytest.mark.asyncio
-async def test_full_storyforge_e2e_pipeline() -> None:
+async def test_full_storyforge_e2e_pipeline(offline_media) -> None:
     topic = "The Invention of Printing Press"
     content_pack = "history"
     aspect_ratio = "9:16"
@@ -82,8 +82,7 @@ async def test_full_storyforge_e2e_pipeline() -> None:
     # Step 12: FFmpeg Video Render
     renderer = FFmpegVideoRenderer()
     render_res = await renderer.render_video(timeline_res, aspect_ratio=aspect_ratio)
-    assert render_res["status"] == "completed"
-    assert "cdn.storyforge.ai" in render_res["output_url"]
+    assert render_res["status"] == "planned"
 
     # Step 13: Multi-Platform Export
     exporter_cap = CapabilityRegistry.get_capability("media_exporter")
